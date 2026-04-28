@@ -1,0 +1,6 @@
+news_wait_seconds: 120
+pullback_window_seconds: 300
+total_window_seconds: 600
+pullback_atr_multiplier: 0.5
+pullback_static_fallback: 0.10
+target_r_multiple: 1.5
