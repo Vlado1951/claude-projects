@@ -9,7 +9,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="oilbot", description="Oil news trading alert bot")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("run", help="Run the bot")
+    run_p = sub.add_parser("run", help="Run the bot")
+    run_p.add_argument(
+        "--once-news",
+        action="store_true",
+        help="Fetch one batch of posts, print them, and exit (smoke test)",
+    )
     sub.add_parser("test-telegram", help="Send a test Telegram message and exit")
     sub.add_parser("test-ibkr", help="Connect to IBKR, stream prices for 30s, and exit")
 
@@ -19,6 +24,10 @@ def main() -> None:
     sub.add_parser("status", help="Print last 24h summary from the database")
 
     args = parser.parse_args()
+
+    # eventkit (ib_insync dep) calls get_event_loop() at import time;
+    # Python 3.10+ no longer auto-creates a loop there.
+    asyncio.set_event_loop(asyncio.new_event_loop())
 
     try:
         from oilbot.config import Config
@@ -34,7 +43,7 @@ def main() -> None:
     try:
         if args.command == "run":
             from oilbot.cli.run import run
-            asyncio.run(run(config))
+            asyncio.run(run(config, once_news=getattr(args, "once_news", False)))
         elif args.command == "test-telegram":
             from oilbot.cli.test_telegram import test_telegram
             asyncio.run(test_telegram(config))
