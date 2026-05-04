@@ -21,6 +21,15 @@ class Config(BaseSettings):
     llm_api_key: str = ""
     log_level: str = "INFO"
 
+    # Strategy engine thresholds
+    spike_window_seconds: int = 120
+    pullback_window_seconds: int = 300
+    total_window_seconds: int = 600
+    pullback_k: float = 0.5
+    atr_bars: int = 12
+    k_static: float = 0.10
+    target_rr: float = 1.5
+
     @model_validator(mode="after")
     def check_llm_key(self) -> "Config":
         if self.llm_provider != "none" and not self.llm_api_key:

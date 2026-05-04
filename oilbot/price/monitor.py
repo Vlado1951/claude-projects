@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -10,6 +9,7 @@ import structlog
 from ib_insync import IB, Contract, Future, RealTimeBar, Ticker
 
 from oilbot.config import Config
+from oilbot.price.types import Bar, PriceWindow
 
 if TYPE_CHECKING:
     from oilbot.alerts.telegram import TelegramAlerter
@@ -18,25 +18,6 @@ log = structlog.get_logger()
 
 _MIN_BACKOFF = 5.0
 _MAX_BACKOFF = 300.0
-
-
-@dataclass
-class Bar:
-    time: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
-
-
-@dataclass
-class PriceWindow:
-    high: float
-    low: float
-    open: float
-    close: float
-    bars: list[Bar]
 
 
 class PriceMonitor:
