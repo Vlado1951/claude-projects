@@ -15,7 +15,7 @@ class Classification:
     sentiment: Sentiment
     confidence: float
     rationale: str
-    source: Literal["keywords", "llm", "cache"]
+    source: Literal["keywords", "llm", "cache", "hint"]
 
 
 @dataclass

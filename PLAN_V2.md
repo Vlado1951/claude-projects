@@ -69,8 +69,8 @@ Phases follow the same shape as v1 — explicit acceptance criteria, no phase be
 
 **Acceptance:**
 - `python -m oilbot test-rss opec_rss` prints recent OPEC press releases (or "no recent items" if none).
-- Same for `reuters_energy` and `nhc_atlantic`.
-- Setting `NEWS_SOURCES=truth_social,opec_rss,reuters_energy,nhc_atlantic` and running `python -m oilbot run` boots without errors and logs `news_received` events from at least Reuters within ~5 min during US trading hours.
+- Same for `google_news_oil` and `nhc_atlantic`.
+- Setting `NEWS_SOURCES=truth_social,opec_rss,google_news_oil,nhc_atlantic` and running `python -m oilbot run` boots without errors and logs `news_received` events from at least `google_news_oil` within ~5 min during US trading hours.
 - Tests green.
 
 > Note: NOAA's feed will be quiet outside hurricane season — that's expected. Don't treat zero events as a bug.

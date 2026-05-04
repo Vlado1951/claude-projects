@@ -7,7 +7,7 @@ This document extends `SPEC.md` (v1). It adds new signal sources and one new arc
 Add additional free oil-relevant signal sources beyond Trump's Truth Social, so the bot reacts to a broader set of market-moving events. All sources must be free — no paid subscriptions, no paid APIs, no rate-limited tiers that require a credit card.
 
 Specifically:
-- More news sources (OPEC, Reuters, hurricane forecasts).
+- More news sources (OPEC, Google News oil/energy, hurricane forecasts).
 - Scheduled data releases (EIA inventories, Baker Hughes rigs).
 - Macroeconomic calendar events (FOMC, NFP).
 - Optional price-based confirmation gating (Brent, DXY, energy ETFs) before firing an alert.
@@ -21,7 +21,7 @@ The classifier and strategy engine from v1 remain unchanged.
 | 1 | EIA Weekly Petroleum Status | Scheduled, structured | Weekly Wed 10:30 ET | api.eia.gov (free key) |
 | 2 | EIA Baker Hughes Rig Count | Scheduled, structured | Weekly Fri 13:00 ET | api.eia.gov (free key) |
 | 3 | OPEC press releases | News, RSS | Irregular | opec.org RSS |
-| 4 | Reuters energy headlines | News, RSS | Continuous | reuters.com RSS (free) |
+| 4 | Google News oil/energy | News, RSS | Continuous | news.google.com RSS (free, no key) |
 | 5 | NOAA National Hurricane Center | News, RSS | Continuous (active hurricane season) | nhc.noaa.gov RSS |
 | 6 | FOMC + NFP economic calendar | Scheduled, calendar | ~8/year + monthly | federalreserve.gov + BLS |
 | 7 | Price confirmation: Brent, DXY, XLE | Real-time price | Continuous | yfinance (free) |
@@ -78,11 +78,15 @@ OPEC announcements move oil more than almost any other source — production cut
 
 **Classification:** Standard text classification (keyword + LLM if enabled). The keyword list gains OPEC-specific terms: `production cut`, `production increase`, `voluntary cut`, `output target`, `compliance`.
 
-### 3.4 Reuters energy news
+### 3.4 Google News oil/energy
 
-Free RSS for headline-level news. Catches geopolitical events Trump won't post about.
+Google News RSS search — free, no API key, no rate limit documented. Catches geopolitical events Trump won't post about. Reuters shut down their public RSS feeds in 2020; Google News aggregates the same coverage (Reuters, AP, Bloomberg, FT, etc.) through a single public endpoint.
 
-**Endpoint:** `https://www.reuters.com/arc/outboundfeeds/category-rss/?taxonomy=energy` and the broader markets feed filtered for oil-related keywords.
+**Endpoint:** `https://news.google.com/rss/search?q=oil+OR+crude+OR+OPEC+OR+sanctions+when:1d&hl=en-US&gl=US&ceid=US:en`
+
+The `when:1d` query operator restricts results to the last 24 hours, keeping the feed fresh without dedup noise from old articles cycling back in.
+
+**Source name:** `google_news_oil`
 
 **Listener behavior:** Generic RSS poller, every 60 seconds. Keyword pre-filter (case-insensitive) before emitting: `crude`, `oil`, `OPEC`, `Iran`, `Russia`, `pipeline`, `refinery`, `sanctions`, `embargo`, `Strait of Hormuz`, `Houthi`. Posts that don't match are dropped silently — keeps classification load low.
 
@@ -191,7 +195,7 @@ New keys in `.env`:
 ```
 EIA_API_KEY=<free key from eia.gov/opendata/register.php>
 CONFIRMATION_MODE=advisory  # off | advisory | required
-NEWS_SOURCES=truth_social,opec_rss,reuters_rss,nhc_rss,eia_petroleum,eia_rigs,fomc,nfp
+NEWS_SOURCES=truth_social,opec_rss,google_news_oil,nhc_atlantic,eia_petroleum,eia_rigs,fomc,nfp
 ```
 
 `NEWS_SOURCES` is a comma-separated allow-list. Disabling a source is just removing it from this list — no code change.

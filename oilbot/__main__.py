@@ -23,6 +23,10 @@ def main() -> None:
 
     sub.add_parser("status", help="Print last 24h summary from the database")
 
+    test_rss_p = sub.add_parser("test-rss", help="Fetch one RSS poll and print emitted events")
+    test_rss_p.add_argument("--feed-url", required=True, help="RSS feed URL to fetch")
+    test_rss_p.add_argument("--name", required=True, help="Source name (used as author on events)")
+
     trigger_p = sub.add_parser(
         "dev-trigger",
         help="Inject a fake news event into the strategy engine against the live price feed",
@@ -67,6 +71,9 @@ def main() -> None:
         elif args.command == "dev-trigger":
             from oilbot.cli.dev_trigger import dev_trigger
             asyncio.run(dev_trigger(config, args.sentiment))
+        elif args.command == "test-rss":
+            from oilbot.cli.test_rss import test_rss
+            asyncio.run(test_rss(config, args.feed_url, args.name))
     except KeyboardInterrupt:
         pass
 

@@ -174,7 +174,7 @@ pm2 logs oilbot
 
 ```bash
 make lint    # ruff + mypy
-make test    # pytest (98 tests, no network required)
+make test    # pytest (115 tests, no network required)
 make install # uv sync --extra dev
 ```
 
@@ -186,6 +186,7 @@ make install # uv sync --extra dev
 | `oilbot run --once-news` | Fetch one batch of posts and exit (smoke test) |
 | `oilbot test-telegram` | Send a test Telegram message and exit |
 | `oilbot test-ibkr` | Connect, stream MCL prices for 30 s, exit |
+| `oilbot test-rss --feed-url <url> --name <name>` | Fetch one RSS poll and print up to 5 emitted events |
 | `oilbot classify "<text>"` | Classify a post text and print result |
 | `oilbot dev-trigger BULLISH\|BEARISH` | Inject a fake event into the strategy engine against the live price feed |
 | `oilbot status` | Print last-24h post / classification / alert counts |

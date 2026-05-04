@@ -13,6 +13,7 @@ dependencies = [
     "anthropic>=0.30",
     "openai>=1.40",
     "curl-cffi>=0.15.0",
+    "feedparser>=6.0.12",
 ]
 
 [project.optional-dependencies]

@@ -22,6 +22,17 @@ class HybridClassifier:
         self._cache = cache or ClassificationCache(DEFAULT_DB_PATH)
 
     async def classify(self, event: NewsEvent) -> Classification:
+        if event.default_sentiment is not None:
+            hint = Classification(
+                sentiment=event.default_sentiment,
+                confidence=1.0,
+                rationale="default_sentiment hint",
+                source="hint",
+            )
+            log.info("classification", post_id=event.id, source="hint",
+                     sentiment=hint.sentiment.value)
+            return hint
+
         cached = self._cache.get(event.id)
         if cached is not None:
             log.info("classification", post_id=event.id, source="cache",
