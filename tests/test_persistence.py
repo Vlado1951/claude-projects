@@ -127,3 +127,34 @@ def test_summary_counts_posts_seen(tmp_path: Path):
     db.mark_seen("p2")
     s = db.last_24h_summary()
     assert s["posts_seen"] == 2
+
+
+# ── per_source_events / per_source_alerts ─────────────────────────────────────
+
+def test_per_source_events_empty_on_fresh_db(tmp_path: Path):
+    assert _db(tmp_path).per_source_events() == {}
+
+
+def test_per_source_events_groups_by_source(tmp_path: Path):
+    db = _db(tmp_path)
+    db.mark_seen("p1", "truth_social")
+    db.mark_seen("p2", "truth_social")
+    db.mark_seen("p3", "google_news_oil")
+    counts = db.per_source_events()
+    assert counts["truth_social"] == 2
+    assert counts["google_news_oil"] == 1
+
+
+def test_per_source_alerts_empty_on_fresh_db(tmp_path: Path):
+    assert _db(tmp_path).per_source_alerts() == {}
+
+
+def test_per_source_alerts_groups_by_source(tmp_path: Path):
+    db = _db(tmp_path)
+    db.mark_seen("p1", "truth_social")
+    db.mark_seen("p2", "google_news_oil")
+    db.record_alert("p1", "BUY", 100.0, 99.0, 101.5)
+    db.record_alert("p2", "BUY", 100.0, 99.0, 101.5)
+    counts = db.per_source_alerts()
+    assert counts.get("truth_social", 0) == 1
+    assert counts.get("google_news_oil", 0) == 1

@@ -8,8 +8,10 @@ import structlog
 from oilbot.alerts.telegram import TelegramAlerter
 from oilbot.classifier.hybrid import HybridClassifier
 from oilbot.config import Config
+from oilbot.news.configured_sources import RSS_SOURCES
 from oilbot.news.listener import NewsListener
 from oilbot.news.models import NewsEvent
+from oilbot.news.rss import GenericRSSListener
 from oilbot.news.source import NewsSource
 from oilbot.persistence.db import DEFAULT_DB_PATH, Database
 from oilbot.price.monitor import PriceMonitor
@@ -42,6 +44,19 @@ class Orchestrator:
         sources: list[NewsSource] = []
         if "truth_social" in enabled:
             sources.append(NewsListener(config, self._db, alerter=self._alerter))
+        for name, cfg in RSS_SOURCES.items():
+            if name in enabled:
+                sources.append(
+                    GenericRSSListener(
+                        name=cfg.name,
+                        feed_url=cfg.feed_url,
+                        db=self._db,
+                        poll_interval_seconds=cfg.poll_interval_seconds,
+                        keyword_filter=cfg.keyword_filter,
+                        default_sentiment=cfg.default_sentiment,
+                        active_window=cfg.active_window,
+                    )
+                )
         return sources
 
     async def run(self) -> None:

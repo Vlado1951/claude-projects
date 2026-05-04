@@ -110,6 +110,17 @@ uv run python -m oilbot dev-trigger BULLISH
 # 6. Database status
 uv run python -m oilbot status
 # Expected: last-24h summary with post, classification, and alert counts.
+# Once RSS sources are active, a per-source breakdown also appears.
+
+# 7. RSS sources (Phase 13) — test each feed independently (no IBKR required)
+uv run python -m oilbot test-rss opec_rss
+# Expected: recent OPEC press releases printed, or "no entries" if feed is quiet.
+
+uv run python -m oilbot test-rss google_news_oil
+# Expected: up to 5 oil/energy headlines from the last 24 h.
+
+uv run python -m oilbot test-rss nhc_atlantic
+# Expected: NHC Atlantic advisory entries (quiet outside Jun–Nov hurricane season).
 ```
 
 ---

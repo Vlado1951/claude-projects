@@ -202,3 +202,24 @@ class Database:
             "classified_neutral": neutral,
             "alerts_sent": alerts_sent,
         }
+
+    def per_source_events(self, hours: int = 24) -> dict[str, int]:
+        cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+        with sqlite3.connect(self._path) as conn:
+            rows = conn.execute(
+                "SELECT source, COUNT(*) FROM seen_posts"
+                " WHERE inserted_at >= ? GROUP BY source",
+                (cutoff,),
+            ).fetchall()
+        return {row[0]: row[1] for row in rows}
+
+    def per_source_alerts(self, hours: int = 24) -> dict[str, int]:
+        cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+        with sqlite3.connect(self._path) as conn:
+            rows = conn.execute(
+                "SELECT sp.source, COUNT(*) FROM alerts a"
+                " JOIN seen_posts sp ON sp.id = a.post_id"
+                " WHERE a.sent_at >= ? GROUP BY sp.source",
+                (cutoff,),
+            ).fetchall()
+        return {row[0]: row[1] for row in rows}

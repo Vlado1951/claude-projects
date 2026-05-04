@@ -209,6 +209,62 @@ async def test_neutral_event_never_reaches_engine(tmp_path: Path) -> None:
     alerter.alert.assert_not_called()
 
 
+async def test_rss_feed_to_alert(tmp_path: Path) -> None:
+    """Scripted RSS feed (google_news_oil) → keyword-filtered event → price action → BUY alert."""
+    from unittest.mock import AsyncMock, patch
+
+    from oilbot.news.configured_sources import RSS_SOURCES
+    from oilbot.news.rss import GenericRSSListener
+
+    alerter = AsyncMock()
+    bars = [_bar(60, 100.0), _bar(200, 99.85), _bar(500, 100.05)]
+    engine = _make_engine(bars, tmp_path, alerter)
+
+    db = _make_db(tmp_path)
+    src = RSS_SOURCES["google_news_oil"]
+    listener = GenericRSSListener(
+        name=src.name,
+        feed_url=src.feed_url,
+        db=db,
+        poll_interval_seconds=0,
+        keyword_filter=src.keyword_filter,
+    )
+
+    scripted_entry = {
+        "id": "gn-integ-1",
+        "link": "https://example.com/oil",
+        "title": "OPEC announces crude production cut",
+        "summary": "",
+        "published": "Mon, 01 Jan 2024 10:00:00 +0000",
+    }
+    feed_mock = MagicMock()
+    feed_mock.get = lambda k, d=None: (
+        [scripted_entry] if k == "entries" else (False if k == "bozo" else d)
+    )
+
+    collected: list[NewsEvent] = []
+    with patch("oilbot.news.rss.feedparser.parse", return_value=feed_mock):
+        with patch("asyncio.sleep", new=AsyncMock()):
+            async for event in listener.stream():
+                collected.append(event)
+                break
+
+    assert len(collected) == 1
+    event = collected[0]
+    assert event.author == "google_news_oil"
+    assert "OPEC" in event.text
+
+    cls = Classification(
+        sentiment=Sentiment.BULLISH, confidence=0.88, rationale="opec cut", source="keywords"
+    )
+    with patch("asyncio.sleep", new=engine._fake_sleep):  # type: ignore[attr-defined]
+        await engine.handle(event, cls)
+        await asyncio.gather(*list(engine._tasks), return_exceptions=True)
+
+    alerter.alert.assert_called_once()
+    assert alerter.alert.call_args[0][0].side == "BUY"
+
+
 async def test_duplicate_event_not_double_alerted(tmp_path: Path) -> None:
     """Handling the same event id twice fires the alert at most once per DB state."""
     alerter = AsyncMock()

@@ -1,9 +1,10 @@
-"""Tests for orchestrator — Phase 11 additions."""
+"""Tests for orchestrator — Phase 11 / Phase 13."""
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import structlog.testing
 
+from oilbot.news.rss import GenericRSSListener
 from oilbot.orchestrator import Orchestrator
 from oilbot.persistence.db import Database
 
@@ -70,7 +71,7 @@ async def test_truth_social_source_built_when_enabled(tmp_path: Path) -> None:
 
 
 async def test_multiple_sources_in_allow_list(tmp_path: Path) -> None:
-    """Only recognised source names in NEWS_SOURCES are constructed."""
+    """Recognised source names are constructed; unknown names are silently ignored."""
 
     config = _make_config(news_sources="truth_social,opec_rss,unknown_source")
     db = Database(tmp_path / "test.db")
@@ -84,6 +85,61 @@ async def test_multiple_sources_in_allow_list(tmp_path: Path) -> None:
     ):
         orch = Orchestrator(config)
 
-    # Only truth_social is implemented in Phase 11; opec_rss and unknown ignored
     names = [s.name for s in orch._sources]
-    assert names == ["truth_social"]
+    assert "truth_social" in names
+    assert "opec_rss" in names
+    assert "unknown_source" not in names
+
+
+async def test_opec_rss_source_built_when_enabled(tmp_path: Path) -> None:
+    config = _make_config(news_sources="opec_rss")
+    db = Database(tmp_path / "test.db")
+
+    with (
+        patch("oilbot.orchestrator.Database", return_value=db),
+        patch("oilbot.orchestrator.TelegramAlerter"),
+        patch("oilbot.orchestrator.PriceMonitor"),
+        patch("oilbot.orchestrator.HybridClassifier"),
+        patch("oilbot.orchestrator.StrategyEngine"),
+    ):
+        orch = Orchestrator(config)
+
+    assert len(orch._sources) == 1
+    assert orch._sources[0].name == "opec_rss"
+    assert isinstance(orch._sources[0], GenericRSSListener)
+
+
+async def test_google_news_oil_source_built_when_enabled(tmp_path: Path) -> None:
+    config = _make_config(news_sources="google_news_oil")
+    db = Database(tmp_path / "test.db")
+
+    with (
+        patch("oilbot.orchestrator.Database", return_value=db),
+        patch("oilbot.orchestrator.TelegramAlerter"),
+        patch("oilbot.orchestrator.PriceMonitor"),
+        patch("oilbot.orchestrator.HybridClassifier"),
+        patch("oilbot.orchestrator.StrategyEngine"),
+    ):
+        orch = Orchestrator(config)
+
+    assert len(orch._sources) == 1
+    assert orch._sources[0].name == "google_news_oil"
+    assert isinstance(orch._sources[0], GenericRSSListener)
+
+
+async def test_nhc_atlantic_source_built_when_enabled(tmp_path: Path) -> None:
+    config = _make_config(news_sources="nhc_atlantic")
+    db = Database(tmp_path / "test.db")
+
+    with (
+        patch("oilbot.orchestrator.Database", return_value=db),
+        patch("oilbot.orchestrator.TelegramAlerter"),
+        patch("oilbot.orchestrator.PriceMonitor"),
+        patch("oilbot.orchestrator.HybridClassifier"),
+        patch("oilbot.orchestrator.StrategyEngine"),
+    ):
+        orch = Orchestrator(config)
+
+    assert len(orch._sources) == 1
+    assert orch._sources[0].name == "nhc_atlantic"
+    assert isinstance(orch._sources[0], GenericRSSListener)
