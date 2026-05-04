@@ -23,6 +23,14 @@ def main() -> None:
 
     sub.add_parser("status", help="Print last 24h summary from the database")
 
+    trigger_p = sub.add_parser(
+        "dev-trigger",
+        help="Inject a fake news event into the strategy engine against the live price feed",
+    )
+    trigger_p.add_argument(
+        "sentiment", choices=["BULLISH", "BEARISH"], help="Sentiment to inject"
+    )
+
     args = parser.parse_args()
 
     # eventkit (ib_insync dep) calls get_event_loop() at import time;
@@ -56,6 +64,9 @@ def main() -> None:
         elif args.command == "status":
             from oilbot.cli.status import status
             asyncio.run(status(config))
+        elif args.command == "dev-trigger":
+            from oilbot.cli.dev_trigger import dev_trigger
+            asyncio.run(dev_trigger(config, args.sentiment))
     except KeyboardInterrupt:
         pass
 
