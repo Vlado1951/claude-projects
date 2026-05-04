@@ -17,6 +17,7 @@ class Config(BaseSettings):
     ibkr_port: int = 7497
     ibkr_client_id: int = 42
     news_poll_interval_seconds: int = 30
+    news_sources: str = "truth_social"
     llm_provider: Literal["anthropic", "openai", "none"] = "none"
     llm_api_key: str = ""
     log_level: str = "INFO"

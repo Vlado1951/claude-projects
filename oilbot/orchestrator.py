@@ -10,6 +10,7 @@ from oilbot.classifier.hybrid import HybridClassifier
 from oilbot.config import Config
 from oilbot.news.listener import NewsListener
 from oilbot.news.models import NewsEvent
+from oilbot.news.source import NewsSource
 from oilbot.persistence.db import DEFAULT_DB_PATH, Database
 from oilbot.price.monitor import PriceMonitor
 from oilbot.strategy.engine import StrategyEngine
@@ -33,8 +34,15 @@ class Orchestrator:
             self._db,
             alerter=self._alerter,
         )
-        self._listener = NewsListener(config, self._db, alerter=self._alerter)
+        self._sources: list[NewsSource] = self._build_sources(config)
         self._stopping = False
+
+    def _build_sources(self, config: Config) -> list[NewsSource]:
+        enabled = {s.strip() for s in config.news_sources.split(",") if s.strip()}
+        sources: list[NewsSource] = []
+        if "truth_social" in enabled:
+            sources.append(NewsListener(config, self._db, alerter=self._alerter))
+        return sources
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
@@ -50,6 +58,7 @@ class Orchestrator:
             ibkr_host=self._config.ibkr_host,
             ibkr_port=self._config.ibkr_port,
             llm_provider=self._config.llm_provider,
+            news_sources=self._config.news_sources,
         )
 
         monitor_task = asyncio.create_task(self._monitor.start(), name="price_monitor")
@@ -70,10 +79,40 @@ class Orchestrator:
                 task.cancel()
 
     async def _run_news_loop(self) -> None:
-        async for event in self._listener.stream():
-            if self._stopping:
-                break
-            asyncio.create_task(self._handle_event(event), name=f"event_{event.id}")
+        if not self._sources:
+            log.warning("no_news_sources_enabled")
+            return
+
+        queue: asyncio.Queue[NewsEvent] = asyncio.Queue()
+        producers = [
+            asyncio.create_task(
+                self._drain_source(source, queue), name=f"source_{source.name}"
+            )
+            for source in self._sources
+        ]
+
+        try:
+            while True:
+                event = await queue.get()
+                if not self._stopping:
+                    asyncio.create_task(
+                        self._handle_event(event), name=f"event_{event.id}"
+                    )
+        except asyncio.CancelledError:
+            for task in producers:
+                task.cancel()
+            raise
+
+    async def _drain_source(
+        self, source: NewsSource, queue: asyncio.Queue[NewsEvent]
+    ) -> None:
+        try:
+            async for event in source.stream():
+                await queue.put(event)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.error("news_source_error", source=source.name, error=str(exc))
 
     async def _handle_event(self, event: NewsEvent) -> None:
         classification = await self._classifier.classify(event)

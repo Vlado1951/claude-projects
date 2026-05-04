@@ -77,6 +77,8 @@ def _parse_feed(data: list[dict[str, Any]]) -> list[_RawPost]:
 
 
 class NewsListener:
+    name = "truth_social"
+
     def __init__(
         self,
         config: Config,
@@ -136,10 +138,10 @@ class NewsListener:
             # Seed: mark all current posts seen without emitting (avoids alert storm on start)
             seed_data = await self._fetch_statuses(session, account_id)
             seed_posts = _parse_feed(seed_data)
-            seeded = sum(1 for p in seed_posts if not self._db.is_seen(p.id))
+            seeded = sum(1 for p in seed_posts if not self._db.is_seen(p.id, self.name))
             for p in seed_posts:
-                if not self._db.is_seen(p.id):
-                    self._db.mark_seen(p.id)
+                if not self._db.is_seen(p.id, self.name):
+                    self._db.mark_seen(p.id, self.name)
             log.info("news_seed_complete", posts_seeded=seeded)
 
             while True:
@@ -169,8 +171,8 @@ class NewsListener:
                 backoff = _MIN_BACKOFF  # reset on successful fetch+parse
 
                 for post in posts:
-                    if not self._db.is_seen(post.id):
-                        self._db.mark_seen(post.id)
+                    if not self._db.is_seen(post.id, self.name):
+                        self._db.mark_seen(post.id, self.name)
                         event = NewsEvent(
                             id=post.id,
                             author=post.author,

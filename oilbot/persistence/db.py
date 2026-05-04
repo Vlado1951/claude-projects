@@ -66,13 +66,16 @@ class Database:
         with sqlite3.connect(self._path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS seen_posts (
-                    id          TEXT PRIMARY KEY,
+                    id          TEXT NOT NULL,
+                    source      TEXT NOT NULL DEFAULT 'truth_social',
                     author      TEXT NOT NULL DEFAULT '',
                     posted_at   TEXT NOT NULL DEFAULT '',
                     raw_text    TEXT NOT NULL DEFAULT '',
-                    inserted_at TEXT NOT NULL DEFAULT ''
+                    inserted_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (id, source)
                 )
             """)
+            self._migrate_seen_posts_source(conn)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS classifications (
                     post_id       TEXT PRIMARY KEY,
@@ -95,18 +98,39 @@ class Database:
                 )
             """)
 
-    def mark_seen(self, post_id: str) -> None:
+    def _migrate_seen_posts_source(self, conn: sqlite3.Connection) -> None:
+        """One-time migration: rebuild seen_posts with (id, source) primary key."""
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(seen_posts)")}
+        if "source" not in cols:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS seen_posts_new (
+                    id          TEXT NOT NULL,
+                    source      TEXT NOT NULL DEFAULT 'truth_social',
+                    author      TEXT NOT NULL DEFAULT '',
+                    posted_at   TEXT NOT NULL DEFAULT '',
+                    raw_text    TEXT NOT NULL DEFAULT '',
+                    inserted_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (id, source)
+                );
+                INSERT INTO seen_posts_new (id, source, author, posted_at, raw_text, inserted_at)
+                SELECT id, 'truth_social', author, posted_at, raw_text, inserted_at
+                FROM seen_posts;
+                DROP TABLE seen_posts;
+                ALTER TABLE seen_posts_new RENAME TO seen_posts;
+            """)
+
+    def mark_seen(self, post_id: str, source: str = "truth_social") -> None:
         now = datetime.now(UTC).isoformat()
         with sqlite3.connect(self._path) as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO seen_posts (id, inserted_at) VALUES (?, ?)",
-                (post_id, now),
+                "INSERT OR IGNORE INTO seen_posts (id, source, inserted_at) VALUES (?, ?, ?)",
+                (post_id, source, now),
             )
 
-    def is_seen(self, post_id: str) -> bool:
+    def is_seen(self, post_id: str, source: str = "truth_social") -> bool:
         with sqlite3.connect(self._path) as conn:
             row = conn.execute(
-                "SELECT 1 FROM seen_posts WHERE id = ?", (post_id,)
+                "SELECT 1 FROM seen_posts WHERE id = ? AND source = ?", (post_id, source)
             ).fetchone()
         return row is not None
 
