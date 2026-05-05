@@ -32,6 +32,14 @@ def main() -> None:
     test_rss_p.add_argument("--feed-url", help="RSS feed URL (required without SOURCE)")
     test_rss_p.add_argument("--name", help="Source name label (required without SOURCE)")
 
+    test_eia_p = sub.add_parser(
+        "test-eia", help="Fetch latest EIA release and print classification"
+    )
+    test_eia_p.add_argument(
+        "source", nargs="?", default="eia_petroleum", metavar="SOURCE",
+        help="EIA source name: eia_petroleum (default) or eia_rigs",
+    )
+
     trigger_p = sub.add_parser(
         "dev-trigger",
         help="Inject a fake news event into the strategy engine against the live price feed",
@@ -79,6 +87,9 @@ def main() -> None:
         elif args.command == "test-rss":
             from oilbot.cli.test_rss import test_rss
             asyncio.run(test_rss(config, args.source, args.feed_url, args.name))
+        elif args.command == "test-eia":
+            from oilbot.cli.test_eia import test_eia
+            asyncio.run(test_eia(config, args.source))
     except KeyboardInterrupt:
         pass
 

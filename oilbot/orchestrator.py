@@ -8,7 +8,8 @@ import structlog
 from oilbot.alerts.telegram import TelegramAlerter
 from oilbot.classifier.hybrid import HybridClassifier
 from oilbot.config import Config
-from oilbot.news.configured_sources import RSS_SOURCES
+from oilbot.news.configured_sources import EIA_SOURCES, RSS_SOURCES
+from oilbot.news.eia import EIAReleaseListener
 from oilbot.news.listener import NewsListener
 from oilbot.news.models import NewsEvent
 from oilbot.news.rss import GenericRSSListener
@@ -56,6 +57,11 @@ class Orchestrator:
                         default_sentiment=cfg.default_sentiment,
                         active_window=cfg.active_window,
                     )
+                )
+        for name, ds in EIA_SOURCES.items():
+            if name in enabled:
+                sources.append(
+                    EIAReleaseListener(api_key=config.eia_api_key, dataset=ds)
                 )
         return sources
 

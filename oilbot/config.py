@@ -22,6 +22,13 @@ class Config(BaseSettings):
     llm_api_key: str = ""
     log_level: str = "INFO"
 
+    # EIA API
+    eia_api_key: str = ""
+
+    # EIA classification thresholds
+    eia_crude_threshold_mbbl: float = 2.0   # draw/build magnitude to classify BULLISH/BEARISH
+    eia_rig_threshold: int = 5              # rig count change to classify BULLISH/BEARISH
+
     # Strategy engine thresholds
     spike_window_seconds: int = 120
     pullback_window_seconds: int = 300
