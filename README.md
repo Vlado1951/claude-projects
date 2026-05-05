@@ -1,18 +1,69 @@
 # oilbot
 
-Watches Trump's Truth Social feed, classifies posts for crude oil price impact, and sends BUY/SELL alerts to Telegram when a spike → pullback → breakout pattern is detected on IBKR MCL (Micro Crude Oil). **Alerts only — no order placement.**
+Watches multiple oil-relevant news sources, classifies events for crude oil price impact, and sends BUY/SELL alerts to Telegram when a spike → pullback → breakout pattern is detected on IBKR MCL (Micro Crude Oil). **Alerts only — no order placement.**
 
 ---
 
 ## How it works
 
-1. **News listener** polls Truth Social every 30 s (configurable). New posts are classified as BULLISH, BEARISH, or NEUTRAL.
-2. **Classifier** runs keyword matching first, falls back to an LLM (Anthropic or OpenAI) if keywords are ambiguous.
-3. **Strategy engine** opens a 10-minute observation window on each non-neutral post:
+1. **News sources** emit events (Truth Social posts, RSS headlines, EIA data releases, FOMC/NFP calendar events). Each source is independently enabled via `NEWS_SOURCES`.
+2. **Classifier** labels each event BULLISH, BEARISH, or NEUTRAL. Keyword matching runs first; LLM fallback (Anthropic / OpenAI) handles ambiguous posts. EIA releases are classified directly from the magnitude of the inventory change.
+3. **Strategy engine** opens a 10-minute observation window on each non-neutral event:
    - Waits 2 min, finds the spike high (BULLISH) or dump low (BEARISH).
    - Watches 5 min for a pullback below the spike high by `k × ATR` (default `k = 0.5`; falls back to $0.10 if too few bars).
    - Watches the remaining time for a breakout above the spike high. On breakout, fires a Telegram alert with entry, stop, and target.
-4. Up to 5 strategy windows run concurrently. Each result is recorded in a local SQLite database.
+4. **Price confirmation** (optional) cross-checks Brent, WTI, DXY, XLE, and XOP direction before firing. Controlled by `CONFIRMATION_MODE`.
+5. Up to 5 strategy windows run concurrently. All events and alerts are recorded in a local SQLite database.
+
+---
+
+## News sources
+
+Enable sources with a comma-separated `NEWS_SOURCES` value in `.env`. Each source is independent — mix and match as needed.
+
+| Source key | What it monitors | Schedule | Extra requirement |
+|---|---|---|---|
+| `truth_social` | Trump's Truth Social posts | Every 30 s (configurable) | None |
+| `opec_rss` | OPEC press releases | Every 5 min | None |
+| `google_news_oil` | Oil/energy headlines (keyword-filtered) | Every 60 s | None |
+| `nhc_atlantic` | NHC Atlantic hurricane advisories | Every 5 min (Jun–Nov only) | None |
+| `eia_petroleum` | Weekly crude oil inventory (EIA) | Wed 10:30 ET release window | `EIA_API_KEY` |
+| `eia_rigs` | Monthly oil rig count (EIA) | Fri 13:00 ET release window | `EIA_API_KEY` |
+| `calendar` | FOMC meeting dates, NFP release dates | Event-driven | None |
+
+**Example** — run all sources:
+```ini
+NEWS_SOURCES=truth_social,opec_rss,google_news_oil,nhc_atlantic,eia_petroleum,eia_rigs,calendar
+```
+
+### EIA API key
+
+The EIA sources require a free API key (no credit card, no payment):
+
+1. Register at <https://www.eia.gov/opendata/register.php>
+2. Copy the key into `.env` as `EIA_API_KEY=<your-key>`
+
+The bot polls 5 minutes before each scheduled release and checks for new data every 60 seconds for up to 30 minutes.
+
+### Calendar source
+
+Fetches FOMC meeting dates directly from the Federal Reserve website and computes NFP (Non-Farm Payroll) dates as the first Friday of each month. Emits a `watch` event 5 minutes before each release and a `released` event when the data drops. No trading signal is generated — the alert is informational so you know a market-moving event is imminent.
+
+---
+
+## Price confirmation
+
+`CONFIRMATION_MODE` controls whether direction agreement across Brent, WTI, DXY, XLE, and XOP is required before firing an alert.
+
+| Mode | Behaviour |
+|---|---|
+| `off` | No confirmation check. Alert fires on breakout regardless. |
+| `advisory` *(default)* | Confirmation is checked and appended to the alert, but never suppresses it. |
+| `required` | A `disaligned` result (≤1 of 5 tickers moving the right way) suppresses the alert entirely. |
+
+Alignment thresholds: ≥ 4 tickers aligned → `aligned`; 2–3 → `mixed`; ≤ 1 → `disaligned`.
+
+Data is fetched from Yahoo Finance every 60 seconds in a background loop. Run `make test-confirmation` to see the current alignment snapshot.
 
 ---
 
@@ -25,6 +76,7 @@ Watches Trump's Truth Social feed, classifies posts for crude oil price impact, 
 | TWS or IB Gateway | Paper port **4002** (Gateway) or **7497** (TWS). Must be running before `oilbot run`. |
 | MCL market data subscription | Enable **US Futures / NYMEX** in IBKR Account Management → Market Data Subscriptions. |
 | Telegram bot token + chat ID | Create a bot via [@BotFather](https://t.me/botfather); get your chat ID from [@userinfobot](https://t.me/userinfobot). |
+| EIA API key *(EIA sources only)* | Free at <https://www.eia.gov/opendata/register.php> |
 | LLM API key *(optional)* | Anthropic or OpenAI. Set `LLM_PROVIDER=none` to skip (keyword-only classification). |
 
 ---
@@ -50,13 +102,31 @@ $EDITOR .env          # fill in TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, and optionally
 TELEGRAM_TOKEN=<bot-token>
 TELEGRAM_CHAT_ID=<your-chat-id>
 
+# Truth Social handle to watch
+TRUTH_SOCIAL_HANDLE=realDonaldTrump
+
 # IBKR — defaults match IB Gateway paper port
 IBKR_HOST=127.0.0.1
 IBKR_PORT=4002          # 4002 = Gateway paper, 7497 = TWS paper, 7496 = TWS live
 IBKR_CLIENT_ID=42
 
-# Truth Social handle to watch
-TRUTH_SOCIAL_HANDLE=realDonaldTrump
+# News polling interval (seconds — Truth Social only)
+NEWS_POLL_INTERVAL_SECONDS=30
+
+# Comma-separated list of enabled news sources
+# Available: truth_social, opec_rss, google_news_oil, nhc_atlantic,
+#            eia_petroleum, eia_rigs, calendar
+NEWS_SOURCES=truth_social
+
+# EIA API (free key from https://www.eia.gov/opendata/register.php)
+EIA_API_KEY=
+
+# EIA classification thresholds (optional — defaults shown)
+EIA_CRUDE_THRESHOLD_MBBL=2.0   # draw/build magnitude in million barrels to classify
+EIA_RIG_THRESHOLD=5            # rig count change to classify
+
+# Price confirmation: off | advisory (default) | required
+CONFIRMATION_MODE=advisory
 
 # Classifier — set provider + key to enable LLM fallback
 LLM_PROVIDER=none       # none | anthropic | openai
@@ -102,17 +172,7 @@ uv run python -m oilbot classify "Good morning everyone"
 uv run python -m oilbot run --once-news
 # Expected: up to 5 recent Truth Social posts printed.
 
-# 5. Strategy engine against live feed
-uv run python -m oilbot dev-trigger BULLISH
-# Expected: connects to IBKR, logs spike_high_found → pullback_found (or no_setup).
-# Runs the full 10-minute window. A Telegram alert fires if a breakout occurs.
-
-# 6. Database status
-uv run python -m oilbot status
-# Expected: last-24h summary with post, classification, and alert counts.
-# Once RSS sources are active, a per-source breakdown also appears.
-
-# 7. RSS sources (Phase 13) — test each feed independently (no IBKR required)
+# 5. RSS sources — test each feed independently (no IBKR required)
 uv run python -m oilbot test-rss opec_rss
 # Expected: recent OPEC press releases printed, or "no entries" if feed is quiet.
 
@@ -121,6 +181,32 @@ uv run python -m oilbot test-rss google_news_oil
 
 uv run python -m oilbot test-rss nhc_atlantic
 # Expected: NHC Atlantic advisory entries (quiet outside Jun–Nov hurricane season).
+
+# 6. EIA data (requires EIA_API_KEY in .env)
+uv run python -m oilbot test-eia
+# Expected: latest weekly crude stocks printed with BULLISH/BEARISH/NEUTRAL classification.
+
+uv run python -m oilbot test-eia eia_rigs
+# Expected: latest monthly rig count printed with classification.
+
+# 7. Economic calendar
+uv run python -m oilbot test-calendar
+# Expected: next 5 FOMC meeting dates and next 5 NFP dates printed.
+
+# 8. Price confirmation
+uv run python -m oilbot test-confirmation
+# Expected: BUY/SELL alignment printed for Brent, WTI, DXY, XLE, XOP.
+# Tickers with data older than 15 min are marked (stale).
+
+# 9. Strategy engine against live feed
+uv run python -m oilbot dev-trigger BULLISH
+# Expected: connects to IBKR, logs spike_high_found → pullback_found (or no_setup).
+# Runs the full 10-minute window. A Telegram alert fires if a breakout occurs.
+
+# 10. Database status
+uv run python -m oilbot status
+# Expected: last-24h summary with post, classification, and alert counts,
+# plus a per-source breakdown once multiple sources are active.
 ```
 
 ---
@@ -185,7 +271,7 @@ pm2 logs oilbot
 
 ```bash
 make lint    # ruff + mypy
-make test    # pytest (115 tests, no network required)
+make test    # pytest (191 tests, no network required)
 make install # uv sync --extra dev
 ```
 
@@ -193,11 +279,14 @@ make install # uv sync --extra dev
 
 | Command | Description |
 |---|---|
-| `oilbot run` | Start the bot (news + IBKR + strategy) |
+| `oilbot run` | Start the bot (all enabled sources + IBKR + strategy) |
 | `oilbot run --once-news` | Fetch one batch of posts and exit (smoke test) |
 | `oilbot test-telegram` | Send a test Telegram message and exit |
 | `oilbot test-ibkr` | Connect, stream MCL prices for 30 s, exit |
-| `oilbot test-rss --feed-url <url> --name <name>` | Fetch one RSS poll and print up to 5 emitted events |
+| `oilbot test-rss [SOURCE]` | Fetch one RSS poll and print emitted events |
+| `oilbot test-eia [SOURCE]` | Fetch latest EIA release and print classification (`eia_petroleum` default) |
+| `oilbot test-calendar` | Print next 5 FOMC and NFP dates |
+| `oilbot test-confirmation` | Fetch live prices and print BUY/SELL alignment |
 | `oilbot classify "<text>"` | Classify a post text and print result |
 | `oilbot dev-trigger BULLISH\|BEARISH` | Inject a fake event into the strategy engine against the live price feed |
 | `oilbot status` | Print last-24h post / classification / alert counts |
