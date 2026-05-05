@@ -161,3 +161,45 @@ def test_old_prices_pruned() -> None:
     result = ctx.is_aligned("BUY")
     # only one point in window → direction unknown
     assert result.details["BZ=F"] == "?"
+
+
+# ── seeding with bars older than 5 minutes ────────────────────────────────────
+
+def test_direction_computed_with_bars_older_than_window() -> None:
+    """Two bars both outside the 5-min window still yield a direction."""
+    ctx = _make_ctx()
+    t0 = datetime.now(UTC) - timedelta(seconds=460)  # ~7.7 min ago
+    t1 = datetime.now(UTC) - timedelta(seconds=400)  # ~6.7 min ago
+    ctx.inject("BZ=F", 70.00, ts=t0)
+    ctx.inject("BZ=F", 70.50, ts=t1)
+    result = ctx.is_aligned("BUY")
+    assert result.details["BZ=F"] == "↑"
+
+
+def test_stale_flag_when_last_bar_older_than_threshold() -> None:
+    """Bars that are outside the stale threshold are flagged in stale_symbols."""
+    ctx = _make_ctx()
+    t0 = datetime.now(UTC) - timedelta(minutes=20)
+    t1 = datetime.now(UTC) - timedelta(minutes=18)
+    ctx.inject("BZ=F", 70.00, ts=t0)
+    ctx.inject("BZ=F", 70.50, ts=t1)
+    result = ctx.is_aligned("BUY", stale_threshold_s=15 * 60)
+    assert "BZ=F" in result.stale_symbols
+    assert result.details["BZ=F"] == "↑"  # direction still computed
+
+
+def test_no_stale_flag_when_last_bar_within_threshold() -> None:
+    ctx = _make_ctx()
+    t0 = datetime.now(UTC) - timedelta(minutes=10)
+    t1 = datetime.now(UTC) - timedelta(minutes=8)
+    ctx.inject("BZ=F", 70.00, ts=t0)
+    ctx.inject("BZ=F", 70.50, ts=t1)
+    result = ctx.is_aligned("BUY", stale_threshold_s=15 * 60)
+    assert "BZ=F" not in result.stale_symbols
+
+
+def test_no_stale_flag_when_no_data() -> None:
+    """Tickers with no data at all should not appear in stale_symbols."""
+    ctx = _make_ctx()
+    result = ctx.is_aligned("BUY")
+    assert "BZ=F" not in result.stale_symbols

@@ -11,9 +11,12 @@ async def test_confirmation(config: Config) -> None:
 
     for side in ("BUY", "SELL"):
         result = ctx.is_aligned(side)
-        parts = [
-            f"{_TICKER_LABELS.get(sym, sym)}{arrow}"
-            for sym, arrow in result.details.items()
-        ]
+        parts = []
+        for sym, arrow in result.details.items():
+            label = _TICKER_LABELS.get(sym, sym)
+            part = f"{label}{arrow}"
+            if sym in result.stale_symbols:
+                part += " (stale)"
+            parts.append(part)
         detail_str = ", ".join(parts) if parts else "no data"
         print(f"{side}: {result.status} ({detail_str})")
