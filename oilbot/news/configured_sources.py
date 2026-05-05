@@ -7,6 +7,8 @@ from datetime import datetime
 from oilbot.news.eia import EIADataset
 from oilbot.types import Sentiment
 
+_DEFAULT_UA = "Mozilla/5.0 (compatible; OilbotRSS/1.0)"
+
 
 @dataclass
 class RSSSourceConfig:
@@ -16,6 +18,7 @@ class RSSSourceConfig:
     keyword_filter: list[str] | None = None
     default_sentiment: Sentiment | None = None
     active_window: Callable[[datetime], bool] | None = None
+    user_agent: str = _DEFAULT_UA
 
 
 def _hurricane_season(dt: datetime) -> bool:

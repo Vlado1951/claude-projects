@@ -62,6 +62,7 @@ class Orchestrator:
                         keyword_filter=cfg.keyword_filter,
                         default_sentiment=cfg.default_sentiment,
                         active_window=cfg.active_window,
+                        user_agent=cfg.user_agent,
                     )
                 )
         for name, ds in EIA_SOURCES.items():

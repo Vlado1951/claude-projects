@@ -70,6 +70,7 @@ class GenericRSSListener:
         keyword_filter: list[str] | None = None,
         default_sentiment: Sentiment | None = None,
         active_window: Callable[[datetime], bool] | None = None,
+        user_agent: str = "Mozilla/5.0 (compatible; OilbotRSS/1.0)",
     ) -> None:
         self.name = name
         self._url = feed_url
@@ -78,6 +79,7 @@ class GenericRSSListener:
         self._keywords = [k.lower() for k in keyword_filter] if keyword_filter else None
         self._default_sentiment = default_sentiment
         self._active_window = active_window
+        self._user_agent = user_agent
 
     def _passes_filter(self, entry: Any) -> bool:
         if self._keywords is None:
@@ -100,7 +102,8 @@ class GenericRSSListener:
 
     async def _fetch(self) -> list[Any]:
         async with httpx.AsyncClient(
-            verify=certifi.where(), follow_redirects=True, timeout=15.0
+            verify=certifi.where(), follow_redirects=True, timeout=15.0,
+            headers={"User-Agent": self._user_agent},
         ) as client:
             response = await client.get(self._url)
             response.raise_for_status()

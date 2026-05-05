@@ -139,6 +139,44 @@ def test_entry_text_strips_html_tags_and_decodes_entities(tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------------
+# User-Agent header
+# ---------------------------------------------------------------------------
+
+
+async def test_fetch_sends_user_agent_header(tmp_path: Path) -> None:
+    """The configured User-Agent must appear in every outgoing request."""
+    listener = _listener(tmp_path, user_agent="TestBot/2.0")
+
+    captured_kwargs: dict[str, Any] = {}
+
+    def _capture_client(**kwargs: Any) -> MagicMock:
+        captured_kwargs.update(kwargs)
+        return _mock_httpx()
+
+    with patch("oilbot.news.rss.httpx.AsyncClient", side_effect=_capture_client):
+        with patch("oilbot.news.rss.feedparser.parse", return_value=_make_feed([])):
+            await listener._fetch()
+
+    assert captured_kwargs.get("headers", {}).get("User-Agent") == "TestBot/2.0"
+
+
+async def test_fetch_default_user_agent_is_oilbot(tmp_path: Path) -> None:
+    listener = _listener(tmp_path)
+    captured_kwargs: dict[str, Any] = {}
+
+    def _capture_client(**kwargs: Any) -> MagicMock:
+        captured_kwargs.update(kwargs)
+        return _mock_httpx()
+
+    with patch("oilbot.news.rss.httpx.AsyncClient", side_effect=_capture_client):
+        with patch("oilbot.news.rss.feedparser.parse", return_value=_make_feed([])):
+            await listener._fetch()
+
+    ua = captured_kwargs.get("headers", {}).get("User-Agent", "")
+    assert "OilbotRSS" in ua
+
+
+# ---------------------------------------------------------------------------
 # _fetch
 # ---------------------------------------------------------------------------
 
