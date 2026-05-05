@@ -33,6 +33,7 @@ def main() -> None:
     test_rss_p.add_argument("--name", help="Source name label (required without SOURCE)")
 
     sub.add_parser("test-calendar", help="Print next 5 FOMC and NFP dates")
+    sub.add_parser("test-confirmation", help="Fetch live prices and print BUY/SELL alignment")
 
     test_eia_p = sub.add_parser(
         "test-eia", help="Fetch latest EIA release and print classification"
@@ -95,6 +96,9 @@ def main() -> None:
         elif args.command == "test-eia":
             from oilbot.cli.test_eia import test_eia
             asyncio.run(test_eia(config, args.source))
+        elif args.command == "test-confirmation":
+            from oilbot.cli.test_confirmation import test_confirmation
+            asyncio.run(test_confirmation(config))
     except KeyboardInterrupt:
         pass
 

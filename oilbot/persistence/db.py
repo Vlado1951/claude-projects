@@ -88,15 +88,25 @@ class Database:
             """)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS alerts (
-                    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-                    post_id  TEXT NOT NULL,
-                    side     TEXT NOT NULL,
-                    entry    REAL NOT NULL,
-                    stop     REAL NOT NULL,
-                    target   REAL NOT NULL,
-                    sent_at  TEXT NOT NULL
+                    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                    post_id              TEXT NOT NULL,
+                    side                 TEXT NOT NULL,
+                    entry                REAL NOT NULL,
+                    stop                 REAL NOT NULL,
+                    target               REAL NOT NULL,
+                    sent_at              TEXT NOT NULL,
+                    confirmation_status  TEXT NOT NULL DEFAULT 'not_checked'
                 )
             """)
+            self._migrate_alerts_confirmation(conn)
+
+    def _migrate_alerts_confirmation(self, conn: sqlite3.Connection) -> None:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(alerts)")}
+        if "confirmation_status" not in cols:
+            conn.execute(
+                "ALTER TABLE alerts ADD COLUMN"
+                " confirmation_status TEXT NOT NULL DEFAULT 'not_checked'"
+            )
 
     def _migrate_seen_posts_source(self, conn: sqlite3.Connection) -> None:
         """One-time migration: rebuild seen_posts with (id, source) primary key."""
@@ -160,13 +170,15 @@ class Database:
         stop: float,
         target: float,
         sent_at: str | None = None,
+        confirmation_status: str = "not_checked",
     ) -> None:
         now = sent_at or datetime.now(UTC).isoformat()
         with sqlite3.connect(self._path) as conn:
             conn.execute(
-                """INSERT INTO alerts (post_id, side, entry, stop, target, sent_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (post_id, side, entry, stop, target, now),
+                """INSERT INTO alerts
+                   (post_id, side, entry, stop, target, sent_at, confirmation_status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (post_id, side, entry, stop, target, now, confirmation_status),
             )
 
     def last_24h_summary(self) -> dict[str, int]:

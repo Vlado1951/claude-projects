@@ -22,6 +22,9 @@ class Config(BaseSettings):
     llm_api_key: str = ""
     log_level: str = "INFO"
 
+    # Price confirmation
+    confirmation_mode: Literal["off", "advisory", "required"] = "advisory"
+
     # EIA API
     eia_api_key: str = ""
 

@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Literal
@@ -31,3 +33,5 @@ class AlertPayload:
     breakout_at: datetime
     stop: float
     target: float
+    confirmation_status: str = field(default="not_checked")
+    confirmation_details: str = field(default="")

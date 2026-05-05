@@ -10,6 +10,7 @@ import structlog
 from oilbot.config import Config
 from oilbot.news.models import NewsEvent
 from oilbot.persistence.db import Database
+from oilbot.price.context import PriceContext
 from oilbot.price.types import Bar, PriceSource
 from oilbot.strategy.window import (
     compute_atr,
@@ -40,6 +41,7 @@ class StrategyEngine:
         alerter: TelegramAlerter | None = None,
         _clock: Callable[[], datetime] | None = None,
         _poll_interval: float = _POLL_INTERVAL,
+        price_context: PriceContext | None = None,
     ) -> None:
         self._spike_window_s = config.spike_window_seconds
         self._pullback_window_s = config.pullback_window_seconds
@@ -48,12 +50,14 @@ class StrategyEngine:
         self._atr_bars = config.atr_bars
         self._k_static = config.k_static
         self._target_rr = config.target_rr
+        self._confirmation_mode = config.confirmation_mode
 
         self._monitor = monitor
         self._db = db
         self._alerter = alerter
         self._clock = _clock or (lambda: datetime.now(UTC))
         self._poll_interval = _poll_interval
+        self._price_context = price_context
 
         self._semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
         self._tasks: set[asyncio.Task[None]] = set()
@@ -226,6 +230,30 @@ class StrategyEngine:
         else:
             target = entry - self._target_rr * (stop - entry)
 
+        # ── confirmation check ────────────────────────────────────────────────
+        conf_status = "not_checked"
+        conf_details = ""
+        if self._price_context is not None and self._confirmation_mode != "off":
+            result = self._price_context.is_aligned(side)  # type: ignore[arg-type]
+            conf_status = result.status
+            conf_details = result.summary()
+            log.info(
+                "confirmation_checked",
+                post_id=event.id,
+                side=side,
+                status=conf_status,
+                aligned=result.aligned_count,
+            )
+            if self._confirmation_mode == "required" and conf_status == "disaligned":
+                msg = (
+                    f"Setup detected ({side}) but confirmation disaligned "
+                    f"— {conf_details}. Not firing."
+                )
+                log.info("alert_suppressed_confirmation", post_id=event.id)
+                if self._alerter:
+                    await self._alerter.system(msg)
+                return
+
         payload = AlertPayload(
             side=side,  # type: ignore[arg-type]
             post_id=event.id,
@@ -238,6 +266,8 @@ class StrategyEngine:
             breakout_at=self._clock(),
             stop=stop,
             target=target,
+            confirmation_status=conf_status,
+            confirmation_details=conf_details,
         )
         log.info(
             "alert_fired",
@@ -246,6 +276,7 @@ class StrategyEngine:
             entry=entry,
             stop=stop,
             target=round(target, 4),
+            confirmation=conf_status,
         )
         if self._alerter:
             await self._alerter.alert(payload)
@@ -255,4 +286,5 @@ class StrategyEngine:
             entry=entry,
             stop=stop,
             target=target,
+            confirmation_status=conf_status,
         )

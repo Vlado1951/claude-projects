@@ -46,6 +46,11 @@ def format_alert(payload: AlertPayload) -> str:
         + " "
         + escape_md(f"({payload.target - payload.stop:.2f}R)"),
     ]
+    if payload.confirmation_status != "not_checked":
+        details = f" ({payload.confirmation_details})" if payload.confirmation_details else ""
+        lines.append(
+            escape_md(f"Confirmation: {payload.confirmation_status}{details}")
+        )
     return "\n".join(lines)
 
 
