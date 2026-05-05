@@ -8,6 +8,7 @@ import structlog
 from oilbot.alerts.telegram import TelegramAlerter
 from oilbot.classifier.hybrid import HybridClassifier
 from oilbot.config import Config
+from oilbot.news.calendar import CalendarEvent, CalendarListener
 from oilbot.news.configured_sources import EIA_SOURCES, RSS_SOURCES
 from oilbot.news.eia import EIAReleaseListener
 from oilbot.news.listener import NewsListener
@@ -63,6 +64,8 @@ class Orchestrator:
                 sources.append(
                     EIAReleaseListener(api_key=config.eia_api_key, dataset=ds)
                 )
+        if "calendar" in enabled:
+            sources.append(CalendarListener())
         return sources
 
     async def run(self) -> None:
@@ -136,6 +139,15 @@ class Orchestrator:
             log.error("news_source_error", source=source.name, error=str(exc))
 
     async def _handle_event(self, event: NewsEvent) -> None:
+        if isinstance(event, CalendarEvent):
+            log.info(
+                "calendar_event",
+                event_name=event.event_name,
+                event_type=event.event_type,
+            )
+            await self._alerter.system(event.text)
+            return
+
         classification = await self._classifier.classify(event)
         log.info(
             "event_classified",
