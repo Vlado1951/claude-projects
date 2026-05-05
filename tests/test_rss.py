@@ -13,6 +13,18 @@ from oilbot.persistence.db import Database
 from oilbot.types import Sentiment
 
 
+def _mock_httpx() -> MagicMock:
+    """Async context-manager mock for httpx.AsyncClient that returns empty feed text."""
+    response = MagicMock()
+    response.text = "<rss/>"
+    response.raise_for_status = MagicMock()
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=response)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    return client
+
+
 def _make_entry(
     *,
     id: str = "eid-1",
@@ -135,8 +147,9 @@ async def test_fetch_returns_entries(tmp_path: Path) -> None:
     entries = [_make_entry(id=f"e{i}") for i in range(3)]
     listener = _listener(tmp_path)
 
-    with patch("oilbot.news.rss.feedparser.parse", return_value=_make_feed(entries)):
-        result = await listener._fetch()
+    with patch("oilbot.news.rss.httpx.AsyncClient", return_value=_mock_httpx()):
+        with patch("oilbot.news.rss.feedparser.parse", return_value=_make_feed(entries)):
+            result = await listener._fetch()
 
     assert len(result) == 3
 
@@ -148,9 +161,10 @@ async def test_fetch_raises_on_bozo_with_no_entries(tmp_path: Path) -> None:
         True if k == "bozo" else ([] if k == "entries" else MagicMock())
     )
 
-    with patch("oilbot.news.rss.feedparser.parse", return_value=feed):
-        with pytest.raises(OSError, match="feedparser error"):
-            await listener._fetch()
+    with patch("oilbot.news.rss.httpx.AsyncClient", return_value=_mock_httpx()):
+        with patch("oilbot.news.rss.feedparser.parse", return_value=feed):
+            with pytest.raises(OSError, match="feedparser error"):
+                await listener._fetch()
 
 
 # ---------------------------------------------------------------------------
@@ -166,11 +180,12 @@ async def test_stream_deduplicates(tmp_path: Path) -> None:
     entries = [_make_entry(id="eid-1"), _make_entry(id="eid-2")]
     collected: list[Any] = []
 
-    with patch("oilbot.news.rss.feedparser.parse", return_value=_make_feed(entries)):
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            async for event in listener.stream():
-                collected.append(event)
-                break
+    with patch("oilbot.news.rss.httpx.AsyncClient", return_value=_mock_httpx()):
+        with patch("oilbot.news.rss.feedparser.parse", return_value=_make_feed(entries)):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                async for event in listener.stream():
+                    collected.append(event)
+                    break
 
     assert len(collected) == 1
     assert collected[0].id == "eid-2"
@@ -190,11 +205,12 @@ async def test_stream_applies_keyword_filter(tmp_path: Path) -> None:
     listener = _listener(tmp_path, keyword_filter=["opec"])
     collected: list[Any] = []
 
-    with patch("oilbot.news.rss.feedparser.parse", return_value=_make_feed(entries)):
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            async for event in listener.stream():
-                collected.append(event)
-                break
+    with patch("oilbot.news.rss.httpx.AsyncClient", return_value=_mock_httpx()):
+        with patch("oilbot.news.rss.feedparser.parse", return_value=_make_feed(entries)):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                async for event in listener.stream():
+                    collected.append(event)
+                    break
 
     assert len(collected) == 1
     assert "OPEC" in collected[0].text

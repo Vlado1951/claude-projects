@@ -242,12 +242,25 @@ async def test_rss_feed_to_alert(tmp_path: Path) -> None:
         [scripted_entry] if k == "entries" else (False if k == "bozo" else d)
     )
 
+    from unittest.mock import MagicMock as _MM
+
+    def _mock_http() -> _MM:
+        resp = _MM()
+        resp.text = "<rss/>"
+        resp.raise_for_status = _MM()
+        c = AsyncMock()
+        c.get = AsyncMock(return_value=resp)
+        c.__aenter__ = AsyncMock(return_value=c)
+        c.__aexit__ = AsyncMock(return_value=None)
+        return c
+
     collected: list[NewsEvent] = []
-    with patch("oilbot.news.rss.feedparser.parse", return_value=feed_mock):
-        with patch("asyncio.sleep", new=AsyncMock()):
-            async for event in listener.stream():
-                collected.append(event)
-                break
+    with patch("oilbot.news.rss.httpx.AsyncClient", return_value=_mock_http()):
+        with patch("oilbot.news.rss.feedparser.parse", return_value=feed_mock):
+            with patch("asyncio.sleep", new=AsyncMock()):
+                async for event in listener.stream():
+                    collected.append(event)
+                    break
 
     assert len(collected) == 1
     event = collected[0]

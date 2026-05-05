@@ -8,7 +8,9 @@ from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from typing import Any
 
+import certifi
 import feedparser
+import httpx
 import structlog
 
 from oilbot.news.models import NewsEvent
@@ -97,8 +99,14 @@ class GenericRSSListener:
         )
 
     async def _fetch(self) -> list[Any]:
+        async with httpx.AsyncClient(
+            verify=certifi.where(), follow_redirects=True, timeout=15.0
+        ) as client:
+            response = await client.get(self._url)
+            response.raise_for_status()
+            content = response.text
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, feedparser.parse, self._url)
+        result = await loop.run_in_executor(None, feedparser.parse, content)
         if result.get("bozo") and not result.get("entries"):
             exc = result.get("bozo_exception")
             raise OSError(f"feedparser error: {exc}")
