@@ -21,7 +21,15 @@ def main() -> None:
     classify_p = sub.add_parser("classify", help="Classify a post text and print the result")
     classify_p.add_argument("text", help="Post text to classify")
 
-    sub.add_parser("status", help="Print last 24h summary from the database")
+    status_p = sub.add_parser("status", help="Print last 24h summary from the database")
+    status_p.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Also print the last N classified posts",
+    )
+    status_p.add_argument(
+        "-n", "--limit", type=int, default=10, metavar="N",
+        help="Number of recent posts to show with --verbose (default 10)",
+    )
 
     test_rss_p = sub.add_parser("test-rss", help="Fetch one RSS poll and print emitted events")
     test_rss_p.add_argument(
@@ -83,7 +91,7 @@ def main() -> None:
             asyncio.run(classify(config, args.text))
         elif args.command == "status":
             from oilbot.cli.status import status
-            asyncio.run(status(config))
+            asyncio.run(status(config, verbose=args.verbose, limit=args.limit))
         elif args.command == "dev-trigger":
             from oilbot.cli.dev_trigger import dev_trigger
             asyncio.run(dev_trigger(config, args.sentiment))

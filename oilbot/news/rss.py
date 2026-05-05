@@ -138,8 +138,8 @@ class GenericRSSListener:
                     continue
                 if not self._passes_filter(entry):
                     continue
-                self._db.mark_seen(entry_id, self.name)
                 event = self._to_event(entry)
+                self._db.mark_seen(entry_id, self.name, raw_text=event.text)
                 log.info("rss_event_received", source=self.name, entry_id=entry_id, url=event.url)
                 yield event
 

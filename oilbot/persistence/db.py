@@ -129,12 +129,18 @@ class Database:
                 ALTER TABLE seen_posts_new RENAME TO seen_posts;
             """)
 
-    def mark_seen(self, post_id: str, source: str = "truth_social") -> None:
+    def mark_seen(
+        self,
+        post_id: str,
+        source: str = "truth_social",
+        raw_text: str = "",
+    ) -> None:
         now = datetime.now(UTC).isoformat()
         with sqlite3.connect(self._path) as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO seen_posts (id, source, inserted_at) VALUES (?, ?, ?)",
-                (post_id, source, now),
+                "INSERT OR IGNORE INTO seen_posts"
+                " (id, source, raw_text, inserted_at) VALUES (?, ?, ?, ?)",
+                (post_id, source, raw_text, now),
             )
 
     def is_seen(self, post_id: str, source: str = "truth_social") -> bool:
@@ -224,6 +230,30 @@ class Database:
                 (cutoff,),
             ).fetchall()
         return {row[0]: row[1] for row in rows}
+
+    def recent_classifications(self, limit: int = 10) -> list[dict[str, str]]:
+        with sqlite3.connect(self._path) as conn:
+            rows = conn.execute(
+                """
+                SELECT c.classified_at, sp.source, c.sentiment,
+                       c.confidence, sp.raw_text
+                FROM classifications c
+                LEFT JOIN seen_posts sp ON sp.id = c.post_id
+                ORDER BY c.classified_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "classified_at": row[0],
+                "source": row[1] or "",
+                "sentiment": row[2],
+                "confidence": row[3],
+                "text": row[4] or "",
+            }
+            for row in rows
+        ]
 
     def per_source_alerts(self, hours: int = 24) -> dict[str, int]:
         cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
