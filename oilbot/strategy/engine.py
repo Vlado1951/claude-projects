@@ -9,6 +9,7 @@ import structlog
 
 from oilbot.config import Config
 from oilbot.news.models import NewsEvent
+from oilbot.outcomes.tracker import OutcomeTracker
 from oilbot.persistence.db import Database
 from oilbot.persistence.outcomes import OutcomesStore
 from oilbot.price.context import PriceContext
@@ -43,6 +44,7 @@ class StrategyEngine:
         _clock: Callable[[], datetime] | None = None,
         _poll_interval: float = _POLL_INTERVAL,
         price_context: PriceContext | None = None,
+        outcome_tracker: OutcomeTracker | None = None,
     ) -> None:
         self._spike_window_s = config.spike_window_seconds
         self._pullback_window_s = config.pullback_window_seconds
@@ -60,6 +62,7 @@ class StrategyEngine:
         self._clock = _clock or (lambda: datetime.now(UTC))
         self._poll_interval = _poll_interval
         self._price_context = price_context
+        self._outcome_tracker = outcome_tracker
 
         self._semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
         self._tasks: set[asyncio.Task[None]] = set()
@@ -291,3 +294,5 @@ class StrategyEngine:
             confirmation_status=conf_status,
         )
         self._outcomes.open_outcome(alert_id, tracked_from_at=self._clock())
+        if self._outcome_tracker is not None:
+            self._outcome_tracker.open_alert(alert_id, payload)

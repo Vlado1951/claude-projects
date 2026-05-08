@@ -15,6 +15,7 @@ from oilbot.news.listener import NewsListener
 from oilbot.news.models import NewsEvent
 from oilbot.news.rss import GenericRSSListener
 from oilbot.news.source import NewsSource
+from oilbot.outcomes.tracker import OutcomeTracker
 from oilbot.persistence.db import DEFAULT_DB_PATH, Database
 from oilbot.price.context import PriceContext
 from oilbot.price.monitor import PriceMonitor
@@ -36,12 +37,17 @@ class Orchestrator:
         self._price_context = (
             PriceContext() if config.confirmation_mode != "off" else None
         )
+        self._outcome_tracker = OutcomeTracker(
+            config, DEFAULT_DB_PATH, alerter=self._alerter
+        )
+        self._monitor.set_outcome_tracker(self._outcome_tracker)
         self._engine = StrategyEngine(
             config,
             self._monitor,
             self._db,
             alerter=self._alerter,
             price_context=self._price_context,
+            outcome_tracker=self._outcome_tracker,
         )
         self._sources: list[NewsSource] = self._build_sources(config)
         self._stopping = False
@@ -98,14 +104,17 @@ class Orchestrator:
             if self._price_context is not None
             else None
         )
+        tracker_task = asyncio.create_task(
+            self._outcome_tracker.start(), name="outcome_tracker"
+        )
 
-        tasks = [t for t in (monitor_task, news_task, context_task) if t is not None]
+        tasks = [t for t in (monitor_task, news_task, context_task, tracker_task) if t is not None]
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             pass
         finally:
-            await self._shutdown(monitor_task, news_task, context_task)
+            await self._shutdown(monitor_task, news_task, context_task, tracker_task)
 
     def _request_stop(self) -> None:
         if not self._stopping:
@@ -176,11 +185,12 @@ class Orchestrator:
         monitor_task: asyncio.Task[None],
         news_task: asyncio.Task[None],
         context_task: asyncio.Task[None] | None,
+        tracker_task: asyncio.Task[None] | None = None,
     ) -> None:
         log.info("orchestrator_draining_strategy_tasks")
         await self._engine.drain(timeout=_DRAIN_TIMEOUT)
 
-        for task in (monitor_task, news_task, context_task):
+        for task in (monitor_task, news_task, context_task, tracker_task):
             if task is not None and not task.done():
                 task.cancel()
                 try:

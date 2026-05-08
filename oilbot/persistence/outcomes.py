@@ -59,6 +59,20 @@ class OutcomesStore:
             tracked_until_at=(tracked_until_at or datetime.now(UTC)).isoformat(),
         )
 
+    def list_open_with_alerts(self) -> list[dict[str, Any]]:
+        """Return tracking rows joined with their alert fields (entry, stop, target, side)."""
+        with sqlite3.connect(self._path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT ao.*, a.side, a.entry, a.stop, a.target
+                FROM alert_outcomes ao
+                JOIN alerts a ON a.id = ao.alert_id
+                WHERE ao.status = 'tracking'
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def list_open(self) -> list[dict[str, Any]]:
         with sqlite3.connect(self._path) as conn:
             conn.row_factory = sqlite3.Row

@@ -13,6 +13,7 @@ from oilbot.price.types import Bar, PriceWindow
 
 if TYPE_CHECKING:
     from oilbot.alerts.telegram import TelegramAlerter
+    from oilbot.outcomes.tracker import OutcomeTracker
 
 log = structlog.get_logger()
 
@@ -40,8 +41,12 @@ class PriceMonitor:
         self._contract: Future | None = None
         self._connected = False
         self._degraded_notified = False
+        self._outcome_tracker: OutcomeTracker | None = None
 
     # ── public API ────────────────────────────────────────────────────────────
+
+    def set_outcome_tracker(self, tracker: OutcomeTracker) -> None:
+        self._outcome_tracker = tracker
 
     @property
     def is_connected(self) -> bool:
@@ -111,6 +116,9 @@ class PriceMonitor:
         if self._degraded_notified and self._alerter:
             await self._alerter.system("price feed reconnected — alerts resumed")
             self._degraded_notified = False
+
+        if self._outcome_tracker is not None:
+            self._outcome_tracker.handle_reconnect()
 
         contract = await self._resolve_front_month()
         self._contract = contract
@@ -195,11 +203,15 @@ class PriceMonitor:
             return
         now = datetime.now(UTC)
         self._ticks.append((now, float(price)))
+        if self._outcome_tracker is not None:
+            self._outcome_tracker.handle_tick(float(price), now)
         log.debug("ibkr_tick", price=float(price))
 
     def _on_disconnect(self) -> None:
         self._connected = False
         log.warning("ibkr_disconnected")
+        if self._outcome_tracker is not None:
+            self._outcome_tracker.handle_disconnect()
 
     async def _disconnect(self) -> None:
         if self._ib.isConnected():
