@@ -18,10 +18,15 @@ async def dev_trigger(config: Config, sentiment: str) -> None:
     sent = Sentiment[sentiment.upper()]
     alerter = TelegramAlerter(config)
     db = Database(DEFAULT_DB_PATH)
-    monitor = PriceMonitor(config, alerter=alerter)
-    engine = StrategyEngine(config, monitor, db, alerter=alerter)
+    # Use client_id+1 so dev-trigger can run alongside a live bot on the same port.
+    dev_config = config.model_copy(update={"ibkr_client_id": config.ibkr_client_id + 1})
+    monitor = PriceMonitor(dev_config, alerter=alerter)
+    engine = StrategyEngine(dev_config, monitor, db, alerter=alerter)
 
-    print(f"Connecting to IBKR at {config.ibkr_host}:{config.ibkr_port} …")
+    print(
+        f"Connecting to IBKR at {config.ibkr_host}:{config.ibkr_port}"
+        f" (client_id={dev_config.ibkr_client_id}) …"
+    )
     monitor_task = asyncio.create_task(monitor.start())
 
     for _ in range(30):

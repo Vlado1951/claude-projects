@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +31,13 @@ class Config(BaseSettings):
     # EIA classification thresholds
     eia_crude_threshold_mbbl: float = 2.0   # draw/build magnitude to classify BULLISH/BEARISH
     eia_rig_threshold: int = 5              # rig count change to classify BULLISH/BEARISH
+
+    # Forward-test outcome tracking
+    outcome_timeout_minutes: int = 60
+    fill_model: Literal["next_tick", "theoretical"] = "next_tick"
+    stop_slippage_ticks: int = Field(default=0, ge=0)
+    tick_size: float = Field(default=0.01, gt=0)
+    outcome_telegram: bool = False
 
     # Strategy engine thresholds
     spike_window_seconds: int = 120

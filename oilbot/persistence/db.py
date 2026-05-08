@@ -99,6 +99,31 @@ class Database:
                 )
             """)
             self._migrate_alerts_confirmation(conn)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS alert_outcomes (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    alert_id          INTEGER NOT NULL UNIQUE REFERENCES alerts(id),
+                    status            TEXT NOT NULL
+                                          CHECK (status IN
+                                              ('tracking','target_hit','stop_hit','timeout')),
+                    tracked_from_at   TEXT NOT NULL,
+                    tracked_until_at  TEXT,
+                    fill_price        REAL,
+                    fill_at           TEXT,
+                    exit_price        REAL,
+                    exit_at           TEXT,
+                    mfe_price         REAL,
+                    mae_price         REAL,
+                    mfe_r             REAL,
+                    mae_r             REAL,
+                    realized_r        REAL,
+                    paused_seconds    INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_outcomes_status"
+                " ON alert_outcomes(status)"
+            )
 
     def _migrate_alerts_confirmation(self, conn: sqlite3.Connection) -> None:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(alerts)")}
@@ -177,15 +202,16 @@ class Database:
         target: float,
         sent_at: str | None = None,
         confirmation_status: str = "not_checked",
-    ) -> None:
+    ) -> int:
         now = sent_at or datetime.now(UTC).isoformat()
         with sqlite3.connect(self._path) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """INSERT INTO alerts
                    (post_id, side, entry, stop, target, sent_at, confirmation_status)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (post_id, side, entry, stop, target, now, confirmation_status),
             )
+            return cursor.lastrowid  # type: ignore[return-value]
 
     def last_24h_summary(self) -> dict[str, int]:
         cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()

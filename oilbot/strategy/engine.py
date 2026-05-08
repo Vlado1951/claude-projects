@@ -10,6 +10,7 @@ import structlog
 from oilbot.config import Config
 from oilbot.news.models import NewsEvent
 from oilbot.persistence.db import Database
+from oilbot.persistence.outcomes import OutcomesStore
 from oilbot.price.context import PriceContext
 from oilbot.price.types import Bar, PriceSource
 from oilbot.strategy.window import (
@@ -54,6 +55,7 @@ class StrategyEngine:
 
         self._monitor = monitor
         self._db = db
+        self._outcomes = OutcomesStore(db._path)
         self._alerter = alerter
         self._clock = _clock or (lambda: datetime.now(UTC))
         self._poll_interval = _poll_interval
@@ -280,7 +282,7 @@ class StrategyEngine:
         )
         if self._alerter:
             await self._alerter.alert(payload)
-        self._db.record_alert(
+        alert_id = self._db.record_alert(
             post_id=event.id,
             side=side,
             entry=entry,
@@ -288,3 +290,4 @@ class StrategyEngine:
             target=target,
             confirmation_status=conf_status,
         )
+        self._outcomes.open_outcome(alert_id, tracked_from_at=self._clock())
