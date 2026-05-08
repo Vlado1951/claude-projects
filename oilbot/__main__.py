@@ -51,6 +51,17 @@ def main() -> None:
         help="EIA source name: eia_petroleum (default) or eia_rigs",
     )
 
+    perf_p = sub.add_parser("performance", help="Show forward-test performance statistics")
+    perf_p.add_argument(
+        "--since", metavar="DURATION",
+        help="Limit to recent period, e.g. 7d, 24h, 2w",
+    )
+    perf_p.add_argument(
+        "--by", choices=["source", "sentiment", "confirmation", "hour"],
+        metavar="DIM",
+        help="Break down stats by dimension: source, sentiment, confirmation, hour",
+    )
+
     trigger_p = sub.add_parser(
         "dev-trigger",
         help="Inject a fake news event into the strategy engine against the live price feed",
@@ -92,6 +103,9 @@ def main() -> None:
         elif args.command == "status":
             from oilbot.cli.status import status
             asyncio.run(status(config, verbose=args.verbose, limit=args.limit))
+        elif args.command == "performance":
+            from oilbot.cli.performance import performance
+            asyncio.run(performance(config, since=args.since, by=args.by))
         elif args.command == "dev-trigger":
             from oilbot.cli.dev_trigger import dev_trigger
             asyncio.run(dev_trigger(config, args.sentiment))
