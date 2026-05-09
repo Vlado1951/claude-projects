@@ -1,4 +1,4 @@
-.PHONY: lint test run install test-eia test-rss test-calendar test-confirmation
+.PHONY: lint test run install test-eia test-rss test-calendar test-confirmation performance
 
 install:
 	uv sync --extra dev
@@ -24,3 +24,6 @@ test-calendar:
 
 test-confirmation:
 	uv run python -m oilbot test-confirmation
+
+performance:
+	uv run python -m oilbot performance --html report.html && open report.html

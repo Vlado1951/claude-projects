@@ -15,7 +15,6 @@ from oilbot.persistence.db import Database
 from oilbot.persistence.outcomes import OutcomesStore
 from oilbot.types import AlertPayload, Sentiment
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

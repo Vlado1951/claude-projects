@@ -141,6 +141,68 @@ K_STATIC=0.10
 TARGET_RR=1.5
 
 LOG_LEVEL=INFO
+
+# Forward-test / outcome tracking
+OUTCOME_TIMEOUT_MINUTES=60   # close unfilled or lingering alerts after this many minutes
+FILL_MODEL=next_tick         # next_tick | theoretical
+STOP_SLIPPAGE_TICKS=0        # extra adverse ticks added to stop_hit exit price
+TICK_SIZE=0.01               # contract tick size (MCL = 0.01)
+OUTCOME_TELEGRAM=false       # send outcome resolution messages via Telegram
+```
+
+---
+
+## Forward-test mode
+
+Every time the bot fires an alert it writes a row to the `alert_outcomes` table in the
+database. The **outcome tracker** then watches the live MCL price stream and resolves
+each row to one of three terminal states:
+
+| Status | Meaning |
+|---|---|
+| `target_hit` | Price reached the alert target |
+| `stop_hit` | Price reached the alert stop (adverse) |
+| `timeout` | Neither level hit within `OUTCOME_TIMEOUT_MINUTES` |
+
+### R-multiples
+
+All profit/loss is expressed in **R-multiples**: units of initial risk.
+`R = (exit − entry) / |entry − stop|`
+
+- `+1.5 R` means the trade made 1.5× the amount risked.
+- `−1.0 R` means the trade lost exactly the amount risked (a standard stop-out).
+
+**Profit factor** = sum of winning Rs ÷ |sum of losing Rs|.  A profit factor above 1.0
+means the strategy is net-profitable at the assumed fill model.
+
+### MFE and MAE
+
+- **MFE** (Maximum Favorable Excursion) — the best price seen after fill, in R units.  
+  High MFE relative to `TARGET_RR` suggests the target is set too conservatively.
+- **MAE** (Maximum Adverse Excursion) — the worst price seen after fill, in R units.  
+  Low MAE (close to −1 R) on winning trades means the position was threatened before recovering.
+
+### Fill model
+
+- `next_tick` (default) — fill is recorded on the first live tick that crosses the entry
+  price.  Realistic but requires the bot to be running when the price moves.
+- `theoretical` — fill is assumed immediately at the exact entry price.  Useful for
+  back-of-envelope estimates; always gives the best possible entry.
+
+### Viewing results
+
+```bash
+# Text summary (all time)
+uv run python -m oilbot performance
+
+# Last 7 days, broken down by sentiment
+uv run python -m oilbot performance --since 7d --by sentiment
+
+# Self-contained HTML report
+uv run python -m oilbot performance --html report.html
+
+# Makefile shortcut (writes report.html in the project root)
+make performance
 ```
 
 ---
@@ -290,6 +352,7 @@ make install # uv sync --extra dev
 | `oilbot classify "<text>"` | Classify a post text and print result |
 | `oilbot dev-trigger BULLISH\|BEARISH` | Inject a fake event into the strategy engine against the live price feed |
 | `oilbot status` | Print last-24h post / classification / alert counts |
+| `oilbot performance [--since 7d] [--by sentiment] [--html PATH]` | Show forward-test outcome statistics |
 
 ---
 

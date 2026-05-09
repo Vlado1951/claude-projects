@@ -19,7 +19,6 @@ from oilbot.cli.performance import (
 from oilbot.persistence.db import Database
 from oilbot.persistence.outcomes import OutcomesStore
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -268,12 +267,15 @@ def test_group_by_source(tmp_path: Path) -> None:
 
 
 def test_group_by_confirmation(tmp_path: Path) -> None:
+    def _row(post_id: str, conf: str, status: str, r: float) -> dict[str, object]:
+        return {"post_id": post_id, "confirmation_status": conf, "status": status, "realized_r": r}
+
     outcomes = [
-        {"post_id": "a", "confirmation_status": "aligned",    "status": "target_hit", "realized_r": 1.5},
-        {"post_id": "b", "confirmation_status": "aligned",    "status": "target_hit", "realized_r": 1.2},
-        {"post_id": "c", "confirmation_status": "disaligned", "status": "stop_hit",   "realized_r": -1.0},
-        {"post_id": "d", "confirmation_status": "mixed",      "status": "target_hit", "realized_r": 0.8},
-        {"post_id": "e", "confirmation_status": "aligned",    "status": "timeout",    "realized_r": 0.0},
+        _row("a", "aligned",    "target_hit", 1.5),
+        _row("b", "aligned",    "target_hit", 1.2),
+        _row("c", "disaligned", "stop_hit",  -1.0),
+        _row("d", "mixed",      "target_hit", 0.8),
+        _row("e", "aligned",    "timeout",    0.0),
     ]
     rows = fetch_rows(_seed_db(tmp_path, outcomes))
     groups = group_by(rows, "confirmation")
