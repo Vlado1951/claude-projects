@@ -47,8 +47,12 @@ def fetch_rows(db_path: Path, since: datetime | None = None) -> list[dict[str, A
             ao.realized_r,
             ao.mfe_r,
             ao.mae_r,
+            ao.exit_price,
             ao.tracked_from_at,
             a.side,
+            a.entry,
+            a.stop,
+            a.target,
             a.sent_at,
             a.confirmation_status,
             COALESCE(sp.source, 'unknown')    AS source,
@@ -222,10 +226,251 @@ def group_by(rows: list[dict[str, Any]], dimension: str) -> dict[str, list[dict[
 # ---------------------------------------------------------------------------
 
 
+def write_html(
+    path: Path,
+    rows: list[dict[str, Any]],
+    overall: dict[str, Any],
+    since: str | None,
+    generated_at: datetime,
+) -> None:
+    """Write a self-contained HTML performance report."""
+    import html as _html
+    import json
+
+    period = f"since {since}" if since else "all time"
+
+    # ── stat card helper ─────────────────────────────────────────────────────
+    def _card(label: str, value: str, css: str = "") -> str:
+        return (
+            f'<div class="stat"><div class="stat-label">{label}</div>'
+            f'<div class="stat-value {css}">{value}</div></div>'
+        )
+
+    def _r_css(v: float | None) -> str:
+        if v is None:
+            return ""
+        return "positive" if v >= 0 else "negative"
+
+    # ── summary cards ────────────────────────────────────────────────────────
+    if overall["total"] >= 5:
+        cards = "".join([
+            _card("Closed alerts", str(overall["total"])),
+            _card("Hit rate", f"{overall['hit_rate']:.1%}", "positive"),
+            _card("Stop rate", f"{overall['stop_rate']:.1%}", "negative"),
+            _card("Timeout", f"{overall['timeout_rate']:.1%}"),
+            _card("Avg R", _r(overall["avg_r"]), _r_css(overall["avg_r"])),
+            _card("Median R", _r(overall["median_r"]), _r_css(overall["median_r"])),
+            _card("Profit factor", _pf(overall["profit_factor"])),
+            _card("Best trade", _r(overall["best_r"]), "positive"),
+            _card("Worst trade", _r(overall["worst_r"]), "negative"),
+        ])
+    elif overall["total"] > 0:
+        cards = _card(
+            "Closed alerts",
+            f"{overall['total']} — insufficient sample size",
+        )
+    else:
+        cards = "<p>No closed alerts yet.</p>"
+
+    # ── breakdown section helper ─────────────────────────────────────────────
+    def _breakdown_section(title: str, dimension: str) -> str:
+        if not rows:
+            return ""
+        groups = group_by(rows, dimension)
+        items = []
+        for key in sorted(groups):
+            s = compute_stats(groups[key])
+            if s["total"] == 0:
+                continue
+            if s["sufficient"]:
+                detail = (
+                    f"<small>Hit {s['hit_rate']:.0%} | "
+                    f"Stop {s['stop_rate']:.0%} | "
+                    f"Avg R {_r(s['avg_r'])} | "
+                    f"PF {_pf(s['profit_factor'])}</small>"
+                )
+            else:
+                detail = f"<small>{s['total']} alert(s) — insufficient sample</small>"
+            items.append(
+                f'<div class="breakdown-item">'
+                f'<div class="breakdown-key">{_html.escape(str(key))}</div>'
+                f"{detail}"
+                f"</div>"
+            )
+        if not items:
+            return ""
+        return (
+            f"<section><h2>{title}</h2>"
+            f'<div class="breakdown-grid">{"".join(items)}</div></section>'
+        )
+
+    # ── chart data ───────────────────────────────────────────────────────────
+    chart_labels = [str(r["alert_id"]) for r in rows]
+    chart_data = [r["realized_r"] if r["realized_r"] is not None else 0 for r in rows]
+    chart_colors = [
+        "rgba(22,163,74,0.8)" if v >= 0 else "rgba(220,38,38,0.8)"
+        for v in chart_data
+    ]
+
+    # ── trades table rows ────────────────────────────────────────────────────
+    def _td(val: Any, fmt: str = "") -> str:
+        if val is None:
+            return '<td data-val="">—</td>'
+        if isinstance(val, float):
+            display = f"{val:.2f}"
+            return f'<td data-val="{val}">{display}</td>'
+        return f'<td data-val="{_html.escape(str(val))}">{_html.escape(str(val))}</td>'
+
+    def _badge(status: str) -> str:
+        return f'<span class="badge badge-{status}">{status}</span>'
+
+    table_rows = []
+    for r in rows:
+        fired = (r.get("sent_at") or "")[:19].replace("T", " ")
+        table_rows.append(
+            f"<tr>"
+            f"<td>{r['alert_id']}</td>"
+            f"<td>{fired}</td>"
+            f"<td>{_html.escape(r.get('source', ''))}</td>"
+            f"<td>{r.get('side', '')}</td>"
+            + _td(r.get("entry"))
+            + _td(r.get("stop"))
+            + _td(r.get("target"))
+            + _td(r.get("exit_price"))
+            + f"<td>{_badge(r['status'])}</td>"
+            + _td(r.get("realized_r"))
+            + _td(r.get("mfe_r"))
+            + _td(r.get("mae_r"))
+            + "</tr>"
+        )
+
+    # ── assemble HTML ────────────────────────────────────────────────────────
+    doc = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oilbot Performance Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:system-ui,sans-serif;background:#f5f5f5;color:#222}}
+h1{{background:#1a1a2e;color:#eee;padding:1rem 2rem}}
+.meta{{color:#888;font-size:.85rem;padding:.5rem 2rem;background:#fff;border-bottom:1px solid #eee}}
+section{{margin:1.5rem 2rem;background:#fff;border-radius:8px;padding:1.5rem;
+box-shadow:0 1px 4px rgba(0,0,0,.1)}}
+h2{{font-size:1.1rem;margin-bottom:1rem;color:#1a1a2e}}
+.stat-grid{{display:flex;flex-wrap:wrap;gap:1rem}}
+.stat{{flex:1 1 130px;background:#f0f4ff;border-radius:6px;padding:.75rem 1rem}}
+.stat-label{{font-size:.7rem;color:#666;text-transform:uppercase;letter-spacing:.05em}}
+.stat-value{{font-size:1.3rem;font-weight:bold;margin-top:.2rem}}
+.positive{{color:#16a34a}}.negative{{color:#dc2626}}
+.breakdown-grid{{display:flex;flex-wrap:wrap;gap:1rem}}
+.breakdown-item{{flex:1 1 200px;background:#f8faff;border-radius:6px;padding:1rem}}
+.breakdown-key{{font-weight:600;margin-bottom:.4rem}}
+table{{width:100%;border-collapse:collapse;font-size:.82rem}}
+th,td{{padding:.45rem .7rem;text-align:left;border-bottom:1px solid #eee;white-space:nowrap}}
+th{{background:#f8f8f8;cursor:pointer;user-select:none;position:sticky;top:0}}
+th:hover{{background:#ebebeb}}
+tr:hover td{{background:#f0f7ff}}
+.badge{{display:inline-block;border-radius:4px;padding:1px 7px;font-size:.75rem;font-weight:600}}
+.badge-target_hit{{background:#dcfce7;color:#166534}}
+.badge-stop_hit{{background:#fee2e2;color:#991b1b}}
+.badge-timeout{{background:#fef3c7;color:#92400e}}
+.chart-wrap{{max-height:300px}}
+@media(max-width:600px){{section{{margin:.75rem;padding:1rem}}}}
+</style>
+</head>
+<body>
+<h1>Oilbot Performance Report</h1>
+<div class="meta">
+  Generated: {generated_at.strftime("%Y-%m-%d %H:%M UTC")} &nbsp;|&nbsp; Period: {period}
+</div>
+
+<section>
+  <h2>Summary</h2>
+  <div class="stat-grid">{cards}</div>
+</section>
+
+<section>
+  <h2>R-Multiple per Trade</h2>
+  <div class="chart-wrap">
+    <canvas id="rChart"></canvas>
+  </div>
+</section>
+
+{_breakdown_section("Breakdown by Source", "source")}
+{_breakdown_section("Breakdown by Sentiment", "sentiment")}
+{_breakdown_section("Breakdown by Confirmation", "confirmation")}
+
+<section>
+  <h2>All Trades</h2>
+  <div style="overflow-x:auto">
+  <table id="tradesTable">
+    <thead><tr>
+      <th>ID</th><th>Fired at</th><th>Source</th><th>Side</th>
+      <th>Entry</th><th>Stop</th><th>Target</th><th>Exit</th>
+      <th>Status</th><th>R</th><th>MFE R</th><th>MAE R</th>
+    </tr></thead>
+    <tbody>{"".join(table_rows)}</tbody>
+  </table>
+  </div>
+</section>
+
+<script>
+(function(){{
+  var ctx = document.getElementById('rChart');
+  new Chart(ctx, {{
+    type: 'bar',
+    data: {{
+      labels: {json.dumps(chart_labels)},
+      datasets: [{{
+        label: 'Realized R',
+        data: {json.dumps(chart_data)},
+        backgroundColor: {json.dumps(chart_colors)},
+        borderRadius: 3
+      }}]
+    }},
+    options: {{
+      responsive: true,
+      plugins: {{ legend: {{ display: false }} }},
+      scales: {{
+        y: {{ title: {{ display: true, text: 'R-multiple' }}, grid: {{ color: '#eee' }} }},
+        x: {{ title: {{ display: true, text: 'Alert ID' }} }}
+      }}
+    }}
+  }});
+
+  var table = document.getElementById('tradesTable');
+  var sortCol = -1, sortAsc = true;
+  table.querySelectorAll('th').forEach(function(th, i) {{
+    th.addEventListener('click', function() {{
+      if (sortCol === i) sortAsc = !sortAsc; else {{ sortCol = i; sortAsc = true; }}
+      var tbody = table.querySelector('tbody');
+      var rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort(function(a, b) {{
+        var av = a.cells[i].dataset.val || a.cells[i].textContent;
+        var bv = b.cells[i].dataset.val || b.cells[i].textContent;
+        var an = parseFloat(av), bn = parseFloat(bv);
+        if (!isNaN(an) && !isNaN(bn)) return sortAsc ? an - bn : bn - an;
+        return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+      }});
+      rows.forEach(function(r) {{ tbody.appendChild(r); }});
+    }});
+  }});
+}})();
+</script>
+</body>
+</html>"""
+
+    path.write_text(doc, encoding="utf-8")
+
+
 async def performance(
     config: Config,
     since: str | None = None,
     by: str | None = None,
+    html: str | None = None,
 ) -> None:
     since_dt: datetime | None = None
     if since:
@@ -241,25 +486,28 @@ async def performance(
     print("─" * len(header))
 
     total_fired, tracking = fetch_total_and_tracking(DEFAULT_DB_PATH, since_dt)
-    if total_fired == 0:
-        print("No alerts recorded in this period.")
-        return
-
     rows = fetch_rows(DEFAULT_DB_PATH, since_dt)
     closed = len(rows)
-
-    print(f"Total alerts fired: {total_fired}  |  Closed: {closed}  |  Tracking: {tracking}")
-    print()
-
     overall = compute_stats(rows)
-    print(format_stats_block(overall))
 
-    if by and rows:
+    if total_fired == 0:
+        print("No alerts recorded in this period.")
+    else:
+        print(f"Total alerts fired: {total_fired}  |  Closed: {closed}  |  Tracking: {tracking}")
         print()
-        print(f"Breakdown by {by}:")
-        print("─" * 40)
-        groups = group_by(rows, by)
-        for key in sorted(groups):
-            print(f"  [{key}]")
-            print(format_stats_block(compute_stats(groups[key]), indent="    "))
+        print(format_stats_block(overall))
+
+        if by and rows:
             print()
+            print(f"Breakdown by {by}:")
+            print("─" * 40)
+            groups = group_by(rows, by)
+            for key in sorted(groups):
+                print(f"  [{key}]")
+                print(format_stats_block(compute_stats(groups[key]), indent="    "))
+                print()
+
+    if html:
+        html_path = Path(html)
+        write_html(html_path, rows, overall, since, generated_at=datetime.now(UTC))
+        print(f"HTML report written to: {html_path.resolve()}")

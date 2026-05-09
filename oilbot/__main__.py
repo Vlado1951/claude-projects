@@ -61,6 +61,10 @@ def main() -> None:
         metavar="DIM",
         help="Break down stats by dimension: source, sentiment, confirmation, hour",
     )
+    perf_p.add_argument(
+        "--html", metavar="PATH",
+        help="Write a self-contained HTML report to this path",
+    )
 
     trigger_p = sub.add_parser(
         "dev-trigger",
@@ -105,7 +109,7 @@ def main() -> None:
             asyncio.run(status(config, verbose=args.verbose, limit=args.limit))
         elif args.command == "performance":
             from oilbot.cli.performance import performance
-            asyncio.run(performance(config, since=args.since, by=args.by))
+            asyncio.run(performance(config, since=args.since, by=args.by, html=args.html))
         elif args.command == "dev-trigger":
             from oilbot.cli.dev_trigger import dev_trigger
             asyncio.run(dev_trigger(config, args.sentiment))

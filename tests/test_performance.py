@@ -1,7 +1,8 @@
-"""Unit tests for performance CLI (Phase 20)."""
+"""Unit tests for performance CLI (Phases 20–21)."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from oilbot.cli.performance import (
     format_stats_block,
     group_by,
     parse_since,
+    write_html,
 )
 from oilbot.persistence.db import Database
 from oilbot.persistence.outcomes import OutcomesStore
@@ -317,3 +319,90 @@ def test_format_stats_block_contains_key_metrics(tmp_path: Path) -> None:
     assert "Profit factor" in out
     assert "Best" in out
     assert "Worst" in out
+
+
+# ---------------------------------------------------------------------------
+# HTML report (Phase 21)
+# ---------------------------------------------------------------------------
+
+
+class _HTMLValidator(HTMLParser):
+    """Parses HTML and raises on malformed input."""
+    def __init__(self) -> None:
+        super().__init__()
+        self.tags: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        self.tags.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        pass  # just confirm no parse exceptions
+
+
+def test_write_html_creates_file(tmp_path: Path) -> None:
+    db_path = _seed_db(tmp_path, _FIVE_OUTCOMES)
+    rows = fetch_rows(db_path)
+    overall = compute_stats(rows)
+    out = tmp_path / "report.html"
+
+    write_html(out, rows, overall, since=None, generated_at=datetime.now(UTC))
+
+    assert out.exists()
+    assert out.stat().st_size > 0
+
+
+def test_write_html_is_well_formed(tmp_path: Path) -> None:
+    db_path = _seed_db(tmp_path, _FIVE_OUTCOMES)
+    rows = fetch_rows(db_path)
+    overall = compute_stats(rows)
+    out = tmp_path / "report.html"
+
+    write_html(out, rows, overall, since=None, generated_at=datetime.now(UTC))
+
+    content = out.read_text(encoding="utf-8")
+    validator = _HTMLValidator()
+    validator.feed(content)   # raises if malformed
+    assert "html" in validator.tags
+    assert "table" in validator.tags
+    assert "canvas" in validator.tags
+
+
+def test_write_html_contains_required_sections(tmp_path: Path) -> None:
+    db_path = _seed_db(tmp_path, _FIVE_OUTCOMES)
+    rows = fetch_rows(db_path)
+    overall = compute_stats(rows)
+    out = tmp_path / "report.html"
+
+    write_html(out, rows, overall, since="7d", generated_at=datetime.now(UTC))
+
+    content = out.read_text(encoding="utf-8")
+    assert "R-Multiple per Trade" in content
+    assert "All Trades" in content
+    assert "chart.js" in content.lower()    # CDN loaded
+    assert "tradesTable" in content          # sortable table id
+    assert "since 7d" in content            # period label
+
+
+def test_write_html_contains_trade_data(tmp_path: Path) -> None:
+    db_path = _seed_db(tmp_path, _FIVE_OUTCOMES)
+    rows = fetch_rows(db_path)
+    overall = compute_stats(rows)
+    out = tmp_path / "report.html"
+
+    write_html(out, rows, overall, since=None, generated_at=datetime.now(UTC))
+
+    content = out.read_text(encoding="utf-8")
+    # All five status badges should appear
+    assert "target_hit" in content
+    assert "stop_hit" in content
+    assert "timeout" in content
+
+
+def test_write_html_empty_rows(tmp_path: Path) -> None:
+    """write_html must not crash when there are no closed trades."""
+    out = tmp_path / "empty.html"
+    write_html(out, [], compute_stats([]), since=None, generated_at=datetime.now(UTC))
+    content = out.read_text(encoding="utf-8")
+    validator = _HTMLValidator()
+    validator.feed(content)
+    assert "html" in validator.tags
