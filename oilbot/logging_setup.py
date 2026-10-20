@@ -1,8 +1,38 @@
 import logging
+import re
 import sys
 from typing import Any
 
 import structlog
+
+# Masks Telegram bot tokens (e.g. in the api.telegram.org/bot<id>:<token>/ URL
+# that httpx logs at INFO) so secrets never reach stdout or log files.
+_TOKEN_RE = re.compile(r"(bot\d+:)[A-Za-z0-9_-]{20,}")
+_TOKEN_SUB = r"\1<redacted>"
+
+
+def _redact(value: Any) -> Any:
+    return _TOKEN_RE.sub(_TOKEN_SUB, value) if isinstance(value, str) else value
+
+
+class RedactSecretsFilter(logging.Filter):
+    """Strip Telegram bot tokens from log records before they are emitted.
+
+    Foreign (stdlib) records such as httpx's "HTTP Request: %s %s" pass the URL
+    as a non-str object (httpx.URL), so the token only appears once the record is
+    rendered. We therefore render str-message records to their final form, redact
+    that, and clear the args. Native structlog records carry a dict in ``msg`` with
+    no args — those are left untouched (and redacted field-by-field is unnecessary
+    because secrets never enter the event dict).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.args and isinstance(record.msg, str):
+            record.msg = record.getMessage()
+            record.args = ()
+        if isinstance(record.msg, str):
+            record.msg = _redact(record.msg)
+        return True
 
 
 def setup_logging(level: str = "INFO") -> None:
@@ -33,6 +63,7 @@ def setup_logging(level: str = "INFO") -> None:
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
+    handler.addFilter(RedactSecretsFilter())
 
     root = logging.getLogger()
     root.handlers.clear()
