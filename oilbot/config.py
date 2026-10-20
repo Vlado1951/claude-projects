@@ -1,0 +1,57 @@
+from typing import Literal
+
+from pydantic import Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Config(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    # Required
+    telegram_token: str
+    telegram_chat_id: str
+
+    # Optional with defaults
+    truth_social_handle: str = "realDonaldTrump"
+    ibkr_host: str = "127.0.0.1"
+    ibkr_port: int = 7497
+    ibkr_client_id: int = 42
+    news_poll_interval_seconds: int = 30
+    news_sources: str = "truth_social"
+    llm_provider: Literal["anthropic", "openai", "none"] = "none"
+    llm_api_key: str = ""
+    log_level: str = "INFO"
+
+    # Price confirmation
+    confirmation_mode: Literal["off", "advisory", "required"] = "advisory"
+
+    # EIA API
+    eia_api_key: str = ""
+
+    # EIA classification thresholds
+    eia_crude_threshold_mbbl: float = 2.0   # draw/build magnitude to classify BULLISH/BEARISH
+    eia_rig_threshold: int = 5              # rig count change to classify BULLISH/BEARISH
+
+    # Forward-test outcome tracking
+    outcome_timeout_minutes: int = 60
+    fill_model: Literal["next_tick", "theoretical"] = "next_tick"
+    stop_slippage_ticks: int = Field(default=0, ge=0)
+    tick_size: float = Field(default=0.01, gt=0)
+    outcome_telegram: bool = False
+
+    # Strategy engine thresholds
+    spike_window_seconds: int = 120
+    pullback_window_seconds: int = 300
+    total_window_seconds: int = 600
+    pullback_k: float = 0.5
+    atr_bars: int = 12
+    k_static: float = 0.10
+    target_rr: float = 1.5
+
+    @model_validator(mode="after")
+    def check_llm_key(self) -> "Config":
+        if self.llm_provider != "none" and not self.llm_api_key:
+            raise ValueError(
+                f"LLM_API_KEY is required when LLM_PROVIDER='{self.llm_provider}'"
+            )
+        return self

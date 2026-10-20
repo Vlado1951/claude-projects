@@ -1,0 +1,10 @@
+news_wait_seconds: 120
+pullback_window_seconds: 300
+total_window_seconds: 600
+pullback_atr_multiplier: 0.5
+pullback_static_fallback: 0.10
+target_r_multiple: 1.5
+
+# EIA classification thresholds (mirrored in .env as EIA_CRUDE_THRESHOLD_MBBL / EIA_RIG_THRESHOLD)
+eia_crude_threshold_mbbl: 2.0   # draw/build magnitude in million barrels to trigger BULLISH/BEARISH
+eia_rig_threshold: 5            # week-over-week rig count change to trigger signal
